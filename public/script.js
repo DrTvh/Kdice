@@ -23,7 +23,8 @@ let game = {
   isFly: false,  // Track if current bid is fly
   piCount: 0,    // Count of Pi calls in current round
   stakes: 1,     // Current stake multiplier
-  baseStakeValue: 0 // Base stake value ($ per point)
+  baseStakeValue: 100, // Base stake value ($ per point)
+  playerScores: {} // Track scores for each player
 };
 
 // DOM Elements
@@ -33,6 +34,20 @@ const screens = {
   game: document.getElementById('gameScreen'),
   challengeResult: document.getElementById('challengeResultScreen')
 };
+
+// Check for game join parameter
+function checkForGameJoin() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const gameIdToJoin = urlParams.get('join');
+  
+  if (gameIdToJoin) {
+    document.getElementById('gameIdInput').value = gameIdToJoin;
+    // Auto join after a short delay
+    setTimeout(() => {
+      document.getElementById('joinGameBtn').click();
+    }, 500);
+  }
+}
 
 // Helper function to switch screens
 function showScreen(screenName) {
@@ -326,24 +341,34 @@ function updateBidValidity() {
     countButtons.forEach(button => button.style.display = 'flex');
     valueButtons.forEach(button => button.style.display = 'flex');
     
-    if (game.isTsi && game.currentBid.isTsi) {
-      // Tsi after Tsi: standard rule but must stay in Tsi mode
-      countButtons.forEach(button => {
-        const count = parseInt(button.dataset.count);
-        const isValidCount = count > game.currentBid.count;
-        const isValidEqualCount = count === game.currentBid.count;
+    if (game.isTsi) {
+      if (game.currentBid && game.currentBid.isTsi) {
+        // Tsi after Tsi: standard rule
+        countButtons.forEach(button => {
+          const count = parseInt(button.dataset.count);
+          const isValidCount = count > game.currentBid.count;
+          const isValidEqualCount = count === game.currentBid.count;
+          
+          if (!isValidCount && !isValidEqualCount) {
+            button.style.display = 'none';
+          }
+        });
         
-        if (!isValidCount && !isValidEqualCount) {
-          button.style.display = 'none';
-        }
-      });
-      
-      valueButtons.forEach(button => {
-        const value = parseInt(button.dataset.value);
-        if (game.bidCount === game.currentBid.count && value <= game.currentBid.value) {
-          button.style.display = 'none';
-        }
-      });
+        valueButtons.forEach(button => {
+          const value = parseInt(button.dataset.value);
+          if (game.bidCount === game.currentBid.count && value <= game.currentBid.value) {
+            button.style.display = 'none';
+          }
+        });
+      } else {
+        // Tsi after regular bid: can have equal or higher count with any value
+        countButtons.forEach(button => {
+          const count = parseInt(button.dataset.count);
+          if (game.currentBid && count < game.currentBid.count) {
+            button.style.display = 'none';
+          }
+        });
+      }
     } 
     else if (game.isFly) {
       // Fly: must double the count
@@ -583,6 +608,10 @@ document.getElementById('bidBtn').addEventListener('click', () => {
         (game.bidCount > game.currentBid.count) || 
         (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
     } 
+    else if (game.isTsi && !game.currentBid.isTsi) {
+      // Tsi after regular bid: can be equal or higher count with any value
+      isValidBid = game.bidCount >= game.currentBid.count;
+    }
     else if (game.isFly) {
       // Fly after any bid: must double the count and exceed value if after Tsi
       const minCount = game.currentBid.count * 2;
@@ -735,6 +764,25 @@ socket.on('piCalled', ({ player, newStakes, state }) => {
   
   // Update game state
   updateGameState(state, false);
+  
+  // Handle turn correctly
+  const isMyTurn = state.currentPlayerIndex !== null && 
+                  state.players[state.currentPlayerIndex].id === game.playerId;
+  
+  game.isMyTurn = isMyTurn;
+  
+  // Enable the correct buttons when it's your turn after a Pi
+  if (game.isMyTurn) {
+    // Enable Pi (if under limit), Fold and Open buttons
+    document.getElementById('piBtn').disabled = game.piCount >= 3;
+    document.getElementById('foldBtn').disabled = false;
+    document.getElementById('openBtn').disabled = false;
+    
+    // Disable other action buttons in Pi situations
+    document.getElementById('bidBtn').disabled = true;
+    document.getElementById('challengeBtn').disabled = true;
+  }
+  
   updateGameUI();
   
   // Show notification
@@ -880,6 +928,7 @@ function updateGameState(state, updateDice = true) {
   game.stakes = state.stakes || game.stakes;
   game.piCount = state.piCount || game.piCount;
   game.baseStakeValue = state.baseStakeValue || game.baseStakeValue;
+  game.playerScores = state.playerScores || {};
   
   // Check if it's my turn
   if (game.currentPlayerIndex !== null) {
@@ -922,7 +971,11 @@ function updateGameUI() {
   game.players.forEach((player, index) => {
     const playerItem = document.createElement('div');
     playerItem.className = `player-item ${index === game.currentPlayerIndex ? 'current-player' : ''}`;
-    playerItem.textContent = player.name + (player.id === game.playerId ? ' (You)' : '');
+    
+    const playerScore = game.playerScores[player.id] || 0;
+    const scoreText = playerScore >= 0 ? `+${playerScore}p` : `${playerScore}p`;
+    
+    playerItem.textContent = `${player.name} ${scoreText} ${player.id === game.playerId ? '(You)' : ''}`;
     playerList.appendChild(playerItem);
   });
   
@@ -943,12 +996,29 @@ function updateGameUI() {
   // Update stakes display
   updateStakesDisplay();
   
+  // Update round indicator to include score
+  const roundIndicator = document.getElementById('roundIndicator');
+  const myScore = game.playerScores[game.playerId] || 0;
+  const scoreDisplay = myScore >= 0 ? `+${myScore}p` : `${myScore}p`;
+  const moneyDisplay = myScore >= 0 ? 
+    `+$${myScore * game.baseStakeValue}` : 
+    `-$${Math.abs(myScore * game.baseStakeValue)}`;
+
+  document.getElementById('roundNumber').textContent = game.round;
+  roundIndicator.innerHTML = `Round: <span id="roundNumber">${game.round}</span> - ${scoreDisplay} - ${moneyDisplay}`;
+  
   // Enable/disable bid controls based on turn
   const bidControls = document.getElementById('bidControls');
   bidControls.style.opacity = game.isMyTurn ? '1' : '0.5';
   
-  document.getElementById('bidBtn').disabled = !game.isMyTurn;
-  document.getElementById('challengeBtn').disabled = !game.isMyTurn || !game.currentBid;
+  // Check if we're in Pi mode
+  const isInPiResponse = game.stakes > 1 && game.isMyTurn;
+  
+  // Regular mode buttons
+  document.getElementById('bidBtn').disabled = !game.isMyTurn || isInPiResponse;
+  document.getElementById('challengeBtn').disabled = !game.isMyTurn || !game.currentBid || isInPiResponse;
+  
+  // Pi mode buttons
   document.getElementById('piBtn').disabled = !game.isMyTurn || !game.currentBid || game.piCount >= 3;
   document.getElementById('foldBtn').disabled = !game.isMyTurn || game.stakes === 1;
   document.getElementById('openBtn').disabled = !game.isMyTurn || game.stakes === 1;
@@ -1020,8 +1090,14 @@ function updateGameControls() {
   const bidControls = document.getElementById('bidControls');
   bidControls.style.opacity = game.isMyTurn ? '1' : '0.5';
   
-  document.getElementById('bidBtn').disabled = !game.isMyTurn;
-  document.getElementById('challengeBtn').disabled = !game.isMyTurn || !game.currentBid;
+  // Check if we're in Pi mode
+  const isInPiResponse = game.stakes > 1 && game.isMyTurn;
+  
+  // Regular mode buttons
+  document.getElementById('bidBtn').disabled = !game.isMyTurn || isInPiResponse;
+  document.getElementById('challengeBtn').disabled = !game.isMyTurn || !game.currentBid || isInPiResponse;
+  
+  // Pi mode buttons
   document.getElementById('piBtn').disabled = !game.isMyTurn || !game.currentBid || game.piCount >= 3;
   document.getElementById('foldBtn').disabled = !game.isMyTurn || game.stakes === 1;
   document.getElementById('openBtn').disabled = !game.isMyTurn || game.stakes === 1;
@@ -1052,3 +1128,6 @@ tgApp.onEvent('themeChanged', () => {
     document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', '#f1f1f1');
   }
 });
+
+// Check for game join parameter when the page loads
+window.addEventListener('load', checkForGameJoin);

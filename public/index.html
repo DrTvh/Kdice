@@ -488,6 +488,7 @@ h2 {
   font-weight: bold;
   position: relative;
   top: -5px;
+  width: 100%;
 }
 
 #roundNumber {
@@ -669,13 +670,10 @@ h2 {
           </div>
         </div>
         
-        <div class="bid-type-selector">
-          <div class="bid-label">Bid Type:</div>
-          <div class="bid-buttons">
-            <button id="tsiBtn" class="bid-type-button">Tsi (-)</button>
-            <button id="flyBtn" class="bid-type-button">Fly (+)</button>
-          </div>
-        </div>
+        <div class="bid-buttons bid-type-buttons" style="margin-top: 8px;">
+  <button id="tsiBtn" class="bid-type-button">Tsi (-)</button>
+  <button id="flyBtn" class="bid-type-button">Fly (+)</button>
+</div>
         
         <div class="action-buttons">
           <button id="bidBtn" class="button">Place Bid</button>

@@ -12,6 +12,20 @@ class DiceGame {
     this.stakes = 1;
     this.piCount = 0;
     this.baseStakeValue = 100; // Default stake value ($ per point)
+    this.playerScores = {}; // Track points for this game
+    this.originChatId = null; // Track if game came from a group chat
+  }
+
+  updatePlayerScore(winnerId, loserId, points) {
+    if (!this.playerScores[winnerId]) {
+      this.playerScores[winnerId] = 0;
+    }
+    if (!this.playerScores[loserId]) {
+      this.playerScores[loserId] = 0;
+    }
+    
+    this.playerScores[winnerId] += points;
+    this.playerScores[loserId] -= points;
   }
 
   addPlayer(playerId, playerName) {
@@ -77,30 +91,31 @@ class DiceGame {
       return { success: false, message: "Not your turn" };
     }
     
-    // First bid of the game
-    if (this.currentBid === null) {
-      this.currentBid = { count, value, isTsi, isFly, player: playerId };
-      this.getNextPlayer();
-      return { success: true };
-    }
-    
     // Validate bid based on type
     let isValidBid = false;
     
-    if (isTsi && this.currentBid.isTsi) {
-      // Tsi after Tsi: must be higher count or same count but higher value
-      isValidBid = 
-        (count > this.currentBid.count) || 
-        (count === this.currentBid.count && value > this.currentBid.value);
-    } 
+    if (isTsi) {
+      if (this.currentBid && this.currentBid.isTsi) {
+        // Tsi after Tsi: must be higher count or same count but higher value
+        isValidBid = 
+          (count > this.currentBid.count) || 
+          (count === this.currentBid.count && value > this.currentBid.value);
+      } else if (this.currentBid) {
+        // TSI after regular bid: can be equal or higher count with any value
+        isValidBid = count >= this.currentBid.count;
+      } else {
+        // First bid of the game
+        isValidBid = true;
+      }
+    }
     else if (isFly) {
       // Fly after any bid: must double the count and exceed value if after Tsi
-      const minCount = this.currentBid.count * 2;
+      const minCount = this.currentBid ? this.currentBid.count * 2 : 1;
       isValidBid = 
         (count >= minCount) && 
-        (!this.currentBid.isTsi || value > this.currentBid.value);
+        (!this.currentBid || !this.currentBid.isTsi || value > this.currentBid.value);
     }
-    else if (!isTsi && !isFly && this.currentBid.isTsi) {
+    else if (this.currentBid && this.currentBid.isTsi) {
       // Must specify tsi or fly after a tsi bid
       return { 
         success: false, 
@@ -110,6 +125,7 @@ class DiceGame {
     else {
       // Regular bid: must be higher count or same count but higher value
       isValidBid = 
+        !this.currentBid || 
         (count > this.currentBid.count) || 
         (count === this.currentBid.count && value > this.currentBid.value);
     }
@@ -277,7 +293,8 @@ class DiceGame {
       lastRoundLoser: this.lastRoundLoser,
       stakes: this.stakes,
       piCount: this.piCount,
-      baseStakeValue: this.baseStakeValue
+      baseStakeValue: this.baseStakeValue,
+      playerScores: this.playerScores
     };
     
     // If a specific player is requesting their state, include their dice

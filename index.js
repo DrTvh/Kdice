@@ -48,33 +48,56 @@ app.post(webhookPath, (req, res) => {
   res.sendStatus(200);
 });
 
-// Respond to /start command - works in both direct and group chats
-bot.onText(/\/start(@KdiceBot)?/, (msg) => {
-  const chatId = msg.chat.id;
+// Log all messages to debug group chat issues
+bot.on('message', (msg) => {
+  logger.info('Received message', { 
+    msgText: msg.text, 
+    chatType: msg.chat.type,
+    chatId: msg.chat.id,
+    from: msg.from.username || msg.from.first_name
+  });
   
-  // Check if it's a group chat
-  const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+  // Handle start command more directly
+  if (msg.text && (msg.text === '/start' || msg.text.startsWith('/start@'))) {
+    const chatId = msg.chat.id;
+    const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+    
+    if (isGroup) {
+      bot.sendMessage(chatId, "Welcome to Kdice! Create a game with /creategame");
+    } else {
+      bot.sendMessage(chatId, "Welcome to Kdice! Click below to play:", {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: "Play Kdice", web_app: { url: "https://kdice.onrender.com" } }
+          ]]
+        }
+      });
+    }
+  }
   
-  // For groups, use a different approach
-  if (isGroup) {
-    bot.sendMessage(chatId, "Welcome to Kdice! Start a game directly at https://kdice.onrender.com");
-  } else {
-    // For private chats, use web_app button
-    bot.sendMessage(chatId, "Welcome to Kdice! Click below to play:", {
+  // Handle create game command for groups
+  if (msg.text && (msg.text === '/creategame' || msg.text.startsWith('/creategame@'))) {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    const userName = msg.from.first_name || 'Player';
+    const gameId = generateGameId();
+    
+    // Create game and track group chat origin
+    const game = new DiceGame(gameId);
+    game.originChatId = chatId;
+    game.addPlayer(userId.toString(), userName);
+    activeGames[gameId] = game;
+    
+    // Announce the game in the chat
+    bot.sendMessage(chatId, 
+      `${userName} created a new game!\nGame ID: ${gameId}\nWaiting for players to join...`, {
       reply_markup: {
         inline_keyboard: [[
-          { text: "Play Kdice", web_app: { url: "https://kdice.onrender.com" } }
+          { text: "Join Game", url: `https://kdice.onrender.com?join=${gameId}` }
         ]]
       }
     });
   }
-  
-  // Debug log
-  logger.info(`Start command received`, {
-    username: msg.from.username || msg.from.first_name,
-    chatType: msg.chat.type,
-    chatId: chatId
-  });
 });
 
 // Game state storage - maps gameIds to game instances
@@ -116,6 +139,18 @@ function updatePlayerStats(winner, loser, stakes) {
     winnerNewPoints: playerStats[winner.id].points,
     loserNewPoints: playerStats[loser.id].points
   });
+  
+  // If game came from a group chat, announce the result
+  const game = Object.values(activeGames).find(g => 
+    g.players.some(p => p.id === winner.id) && 
+    g.players.some(p => p.id === loser.id)
+  );
+  
+  if (game && game.originChatId) {
+    bot.sendMessage(game.originChatId, 
+      `Game update: ${winner.name} won ${stakes} points from ${loser.name}!`
+    );
+  }
 }
 
 // Add endpoint to get leaderboard
@@ -188,6 +223,14 @@ io.on('connection', (socket) => {
       });
       
       logger.info(`Player joined game`, { gameId, playerName, playerId });
+      
+      // If this game was created from a group chat, announce the join
+      if (game.originChatId) {
+        const creatorName = game.players[0].name;
+        bot.sendMessage(game.originChatId, 
+          `${playerName} joined ${creatorName}'s game! The game can now begin.`
+        );
+      }
     } else {
       socket.emit('error', { message: 'Failed to join game' });
       logger.error(`Join failed - could not add player`, { gameId, playerId });
@@ -228,6 +271,14 @@ io.on('connection', (socket) => {
         playerCount: game.players.length,
         players: game.players.map(p => p.name)
       });
+      
+      // If this game was created from a group chat, announce game start
+      if (game.originChatId && game.players.length >= 2) {
+        const playerNames = game.players.map(p => p.name).join(" and ");
+        bot.sendMessage(game.originChatId, 
+          `Game started between ${playerNames}!`
+        );
+      }
     } else {
       socket.emit('error', { message: 'Cannot start game, need at least 2 players' });
       logger.error(`Start game failed - not enough players`, { gameId, playerId });
@@ -300,7 +351,10 @@ io.on('connection', (socket) => {
     const result = game.challenge(playerId);
     
     if (result.success) {
-      // Update player stats
+      // Update player scores in game
+      game.updatePlayerScore(result.winner.id, result.loser.id, game.stakes);
+      
+      // Update player stats globally
       updatePlayerStats(result.winner, result.loser, game.stakes);
       
       // Send challenge results to all players
@@ -406,6 +460,9 @@ io.on('connection', (socket) => {
     const result = game.fold(playerId);
     
     if (result.success) {
+      // Update player scores in game
+      game.updatePlayerScore(result.winner.id, result.loser.id, result.penalty);
+      
       // Update player stats with reduced penalty
       updatePlayerStats(result.winner, result.loser, result.penalty);
       
@@ -468,6 +525,9 @@ io.on('connection', (socket) => {
     const result = game.open(playerId);
     
     if (result.success) {
+      // Update player scores in game
+      game.updatePlayerScore(result.winner.id, result.loser.id, game.stakes);
+      
       // Update player stats with full stakes
       updatePlayerStats(result.winner, result.loser, game.stakes);
       
@@ -545,6 +605,15 @@ io.on('connection', (socket) => {
     // but without storing socket.id to playerId mapping,
     // we'll rely on explicit leaveGame events
   });
+});
+
+// Parse game ID from URL parameter (for direct sharing)
+app.use((req, res, next) => {
+  if (req.query.join && activeGames[req.query.join]) {
+    // Redirect to main page with a cookie to auto-join this game
+    res.cookie('joinGame', req.query.join, { maxAge: 60000 }); // 1 minute cookie
+  }
+  next();
 });
 
 // Helper function to generate a game ID
