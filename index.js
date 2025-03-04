@@ -1,3 +1,4 @@
+cat > index.js << 'EOL'
 // index.js - Main entry point for the Telegram Mini App
 
 // Import dependencies
@@ -85,7 +86,7 @@ bot.on('message', (msg) => {
   }
   
   // Handle create game command for groups
-  if (msg.text && (msg.text === '/creategame' || msg.text.startsWith('/creategame@'))) {
+  else if (msg.text && (msg.text === '/creategame' || msg.text.startsWith('/creategame@'))) {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const userName = msg.from.first_name || 'Player';
@@ -95,7 +96,7 @@ bot.on('message', (msg) => {
     const game = new DiceGame(gameId);
     game.originChatId = chatId;
     game.baseStakeValue = 100; // Default stake ($100)
-    game.addPlayer(userId.toString(), userName);
+    game.addPlayer(`tg_${userId}`, userName); // Ensure consistent ID format
     
     // Store the game
     activeGames[gameId] = game;
@@ -103,15 +104,49 @@ bot.on('message', (msg) => {
     // Also track this game's origin for leaderboard
     gameOrigins[gameId] = chatId;
     
-    const appUrl = `https://kdice.onrender.com/?join=${gameId}`;
+    const appUrl = `https://kdice.onrender.com/?join=${gameId}&userId=${userId}&userName=${encodeURIComponent(userName)}`;
     
-    // Announce the game in the chat with direct join link
+    // Announce the game in the chat with direct join link for creator
     bot.sendMessage(chatId, 
       `${userName} created a new game!\nGame ID: ${gameId}\nWaiting for players to join...`, {
       reply_markup: {
         inline_keyboard: [[
           { text: "👉 Join this game", url: appUrl }
+        ],[
+          { text: "👥 Other players join with /join", callback_data: "join_info" }
         ]]
+      }
+    });
+  }
+  
+  // Handle join game command for groups
+  else if (msg.text && (msg.text === '/join' || msg.text.startsWith('/join@'))) {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    const userName = msg.from.first_name || 'Player';
+    
+    // Find active games from this group chat
+    const activeGroupGames = Object.entries(activeGames)
+      .filter(([_, game]) => game.originChatId === chatId)
+      .map(([id, game]) => ({
+        id,
+        creator: game.players[0]?.name || 'Unknown'
+      }));
+    
+    if (activeGroupGames.length === 0) {
+      bot.sendMessage(chatId, "No active games in this chat. Create one with /creategame first!");
+      return;
+    }
+    
+    // Create keyboard with available games
+    const keyboard = activeGroupGames.map(game => [{
+      text: `Join ${game.creator}'s game`,
+      url: `https://kdice.onrender.com/?join=${game.id}&userId=${userId}&userName=${encodeURIComponent(userName)}`
+    }]);
+    
+    bot.sendMessage(chatId, "Choose a game to join:", {
+      reply_markup: {
+        inline_keyboard: keyboard
       }
     });
   }
@@ -257,72 +292,78 @@ io.on('connection', (socket) => {
     logger.info(`Game created`, { gameId, playerName, playerId, stakeValue });
   });
   
-// Join an existing game
-socket.on('joinGame', ({ gameId, playerName, playerId }) => {
-  const game = activeGames[gameId];
-  
-  if (!game) {
-    socket.emit('error', { message: 'Game not found' });
-    logger.error(`Join failed - game not found`, { gameId, playerId });
-    return;
-  }
-  
-  if (game.gameStarted) {
-    socket.emit('error', { message: 'Game already started' });
-    logger.error(`Join failed - game already started`, { gameId, playerId });
-    return;
-  }
-  
-  // Check if this player already exists in the game
-  const existingPlayerIndex = game.players.findIndex(p => 
-    p.id === playerId || // Same ID
-    (p.name === playerName && playerName !== 'Player') // Same name (unless generic)
-  );
-  
-  if (existingPlayerIndex !== -1) {
-    // If player already exists, return their state but don't add again
-    logger.info(`Player already in game`, { gameId, playerName, playerId });
+  // Join an existing game
+  socket.on('joinGame', ({ gameId, playerName, playerId }) => {
+    const game = activeGames[gameId];
     
-    socket.join(gameId);
-    socket.emit('gameJoined', { 
-      gameId,
-      state: game.getGameState(game.players[existingPlayerIndex].id),
-      alreadyJoined: true
-    });
-    return;
-  }
-  
-  // Normal join logic for new players
-  if (game.addPlayer(playerId, playerName)) {
-    // Join the socket to the game room
-    socket.join(gameId);
-    
-    // Notify all players about the new player
-    io.to(gameId).emit('playerJoined', { 
-      player: { id: playerId, name: playerName },
-      state: game.getGameState()
-    });
-    
-    // Send the new player their complete state
-    socket.emit('gameJoined', { 
-      gameId,
-      state: game.getGameState(playerId) 
-    });
-    
-    logger.info(`Player joined game`, { gameId, playerName, playerId });
-    
-    // If this game was created from a group chat, announce the join
-    if (game.originChatId) {
-      const creatorName = game.players[0].name;
-      bot.sendMessage(game.originChatId, 
-        `${playerName} joined ${creatorName}'s game! The game can now begin.`
-      );
+    if (!game) {
+      socket.emit('error', { message: 'Game not found' });
+      logger.error(`Join failed - game not found`, { gameId, playerId });
+      return;
     }
-  } else {
-    socket.emit('error', { message: 'Failed to join game' });
-    logger.error(`Join failed - could not add player`, { gameId, playerId });
-  }
-});
+    
+    if (game.gameStarted) {
+      socket.emit('error', { message: 'Game already started' });
+      logger.error(`Join failed - game already started`, { gameId, playerId });
+      return;
+    }
+    
+    // Normalize the player ID to match our format in addPlayer
+    const normalizedPlayerId = playerId.startsWith('tg_') 
+      ? playerId 
+      : `tg_${playerId}`;
+    
+    // Check if this player already exists in the game
+    const existingPlayerIndex = game.players.findIndex(p => {
+      const normalizedId = p.id.startsWith('tg_') ? p.id : `tg_${p.id}`;
+      return normalizedId === normalizedPlayerId || 
+             (p.name === playerName && playerName !== 'Player');
+    });
+    
+    if (existingPlayerIndex !== -1) {
+      // If player already exists, return their state but don't add again
+      logger.info(`Player already in game`, { gameId, playerName, playerId });
+      
+      socket.join(gameId);
+      socket.emit('gameJoined', { 
+        gameId,
+        state: game.getGameState(game.players[existingPlayerIndex].id),
+        alreadyJoined: true
+      });
+      return;
+    }
+    
+    // Normal join logic for new players
+    if (game.addPlayer(playerId, playerName)) {
+      // Join the socket to the game room
+      socket.join(gameId);
+      
+      // Notify all players about the new player
+      io.to(gameId).emit('playerJoined', { 
+        player: { id: playerId, name: playerName },
+        state: game.getGameState()
+      });
+      
+      // Send the new player their complete state
+      socket.emit('gameJoined', { 
+        gameId,
+        state: game.getGameState(playerId) 
+      });
+      
+      logger.info(`Player joined game`, { gameId, playerName, playerId });
+      
+      // If this game was created from a group chat, announce the join
+      if (game.originChatId) {
+        const creatorName = game.players[0].name;
+        bot.sendMessage(game.originChatId, 
+          `${playerName} joined ${creatorName}'s game! The game can now begin.`
+        );
+      }
+    } else {
+      socket.emit('error', { message: 'Failed to join game' });
+      logger.error(`Join failed - could not add player`, { gameId, playerId });
+    }
+  });
    
   // Start the game
   socket.on('startGame', ({ gameId, playerId }) => {
@@ -730,3 +771,4 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
 });
+EOL
