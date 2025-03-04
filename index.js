@@ -1,4 +1,3 @@
-cat > index.js << 'EOL'
 // index.js - Main entry point for the Telegram Mini App
 
 // Import dependencies
@@ -771,4 +770,3 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
 });
-EOL

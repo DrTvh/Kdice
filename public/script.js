@@ -12,11 +12,23 @@ let userData = {
   name: 'Player'
 };
 
-// Try to get user data from Telegram
-if (tgApp.initDataUnsafe && tgApp.initDataUnsafe.user) {
+// Try to get URL parameters first (from group chat join)
+const urlParams = new URLSearchParams(window.location.search);
+const urlUserId = urlParams.get('userId');
+const urlUserName = urlParams.get('userName');
+
+if (urlUserId && urlUserName) {
+  userData = {
+    id: 'tg_' + urlUserId,
+    name: urlUserName
+  };
+  console.log('URL user data loaded:', userData);
+} 
+// If no URL params, try Telegram WebApp data
+else if (tgApp.initDataUnsafe && tgApp.initDataUnsafe.user) {
   const user = tgApp.initDataUnsafe.user;
   userData = {
-    id: 'tg_' + user.id.toString(), // Add prefix for consistency
+    id: 'tg_' + user.id.toString(), 
     name: user.first_name || (user.username ? '@' + user.username : 'Player')
   };
   console.log('Telegram user data loaded:', userData);

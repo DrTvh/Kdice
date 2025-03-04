@@ -38,27 +38,44 @@ class DiceGame {
     });
   }
 
- addPlayer(playerId, playerName) {
-  // Check max players
-  if (this.players.length >= 6) {
-    return false;
+  addPlayer(playerId, playerName) {
+    // Check max players
+    if (this.players.length >= 6) {
+      return false;
+    }
+    
+    // Normalize the player ID - strip the prefix if present
+    const normalizedPlayerId = playerId.startsWith('tg_') 
+      ? playerId 
+      : `tg_${playerId}`;
+    
+    // Check if player already exists by normalized ID
+    const existingPlayerById = this.players.find(p => {
+      const normalizedId = p.id.startsWith('tg_') ? p.id : `tg_${p.id}`;
+      return normalizedId === normalizedPlayerId;
+    });
+    
+    if (existingPlayerById) {
+      // Player already exists by ID - update name if provided
+      if (playerName && playerName !== 'Player') {
+        existingPlayerById.name = playerName;
+      }
+      return true; // Return true to indicate success (player exists)
+    }
+    
+    // Check by name (only if not a generic name)
+    if (playerName !== 'Player') {
+      const existingPlayerByName = this.players.find(p => p.name === playerName);
+      if (existingPlayerByName) {
+        return true; // Return true to indicate success (player exists by name)
+      }
+    }
+    
+    // Add the new player with normalized ID
+    this.players.push({ id: normalizedPlayerId, name: playerName });
+    return true;
   }
   
-  // Check both ID and name (unless generic name 'Player')
-  const existingPlayer = this.players.find(p => 
-    p.id === playerId || 
-    (p.name === playerName && playerName !== 'Player')
-  );
-  
-  if (existingPlayer) {
-    // Player already exists
-    return false;
-  }
-  
-  // Add the new player
-  this.players.push({ id: playerId, name: playerName });
-  return true;
-}
   removePlayer(playerId) {
     const index = this.players.findIndex(player => player.id === playerId);
     if (index !== -1) {
