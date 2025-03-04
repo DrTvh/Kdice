@@ -65,7 +65,77 @@ const gameOrigins = {};
 // Game state storage - maps gameIds to game instances
 const activeGames = {};
 
-// Log all messages to debug group chat issues
+// Help command handler
+function getHelpText() {
+  return `🎲 *KDice Game Commands* 🎲
+
+/start - Start the bot and get help
+/creategame - Create a new game in the current chat
+/join - Join an existing game in the current chat
+/score - View the all-time leaderboard
+/rules - Show the game rules
+
+*How to Play*:
+1. One player creates a game with /creategame
+2. Other players join with /join
+3. Take turns making bids or challenging
+4. The loser of each round decides whether to continue
+
+*Game Rules*:
+- Each player gets 5 dice, 1s are jokers
+- Higher bids or challenges decide who wins points
+- Use Pi to double stakes, Fold to surrender, or Open to challenge`;
+}
+
+// Rules command handler
+function getRulesText() {
+  return `🎲 *KDice Game Rules* 🎲
+
+*Basic Rules*:
+- Each player gets 5 six-sided dice
+- The "1" dice are jokers and count as any value
+- Players take turns making bids about how many dice of a certain value are in play
+- After a bid, the next player must either make a higher bid or challenge
+
+*Bidding Types*:
+- *Regular Bid*: "3 fours" means at least 3 dice showing 4 (or 1 as joker)
+- *Tsi (-)*: Only counts exact value, not jokers. "3 fours-" means exactly 3 dice showing 4
+- *Fly (+)*: After Tsi, you must double the count, but can pick any value
+
+*Raising Stakes*:
+- *Pi (×2)*: Double the stakes (up to 3 times: 2×, 4×, 8×)
+- *Fold*: Give up after a Pi, lose half the current stakes
+- *Open*: Challenge after a Pi, check if the bid is valid
+
+The game continues until players decide to end it, with the loser of each round deciding whether to play another round.`;
+}
+
+// Score command handler
+function getScoreText(chatId) {
+  let scoreText = "🏆 *ALL-TIME LEADERBOARD* 🏆\n\n";
+  
+  // Get all players who have played in this chat
+  const chatPlayers = Object.values(playerStats)
+    .filter(player => player.chatIds && player.chatIds.includes(chatId))
+    .sort((a, b) => b.points - a.points);
+  
+  if (chatPlayers.length === 0) {
+    return "No games have been played in this chat yet!";
+  }
+  
+  chatPlayers.forEach((player, index) => {
+    const winRate = player.rounds > 0 ? (player.points / player.rounds).toFixed(2) : '0.00';
+    const pointsDisplay = player.points >= 0 ? `+${player.points}` : player.points;
+    const dollarsDisplay = player.dollars >= 0 ? `+$${player.dollars}` : `-$${Math.abs(player.dollars)}`;
+    
+    scoreText += `${index + 1}. *${player.name}*: ${pointsDisplay} pts (${player.wins}W/${player.losses}L) ${dollarsDisplay}\n`;
+    scoreText += `   Rounds: ${player.rounds} | Win Rate: ${winRate} pts/round\n\n`;
+  });
+  
+  return scoreText;
+}
+
+// Log all messages and handle commands
 bot.on('message', (msg) => {
   logger.info('Received message', { 
     msgText: msg.text, 
@@ -74,13 +144,21 @@ bot.on('message', (msg) => {
     from: msg.from.username || msg.from.first_name
   });
   
-  // Handle start command more directly
+  // Check if bot was mentioned
+  const botMention = `@${bot.getMe().then(botInfo => botInfo.username).catch(() => 'KdiceBot')}`;
+  
+  if (msg.text && msg.text.includes(botMention)) {
+    bot.sendMessage(msg.chat.id, getHelpText(), { parse_mode: 'Markdown' });
+    return;
+  }
+  
+  // Handle start command
   if (msg.text && (msg.text === '/start' || msg.text.startsWith('/start@'))) {
     const chatId = msg.chat.id;
     const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
     
     if (isGroup) {
-      bot.sendMessage(chatId, "Welcome to Kdice! Create a game with /creategame");
+      bot.sendMessage(chatId, getHelpText(), { parse_mode: 'Markdown' });
     } else {
       bot.sendMessage(chatId, "Welcome to Kdice! Click below to play:", {
         reply_markup: {
@@ -90,6 +168,18 @@ bot.on('message', (msg) => {
         }
       });
     }
+  }
+  
+  // Handle rules command
+  else if (msg.text && (msg.text === '/rules' || msg.text.startsWith('/rules@'))) {
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, getRulesText(), { parse_mode: 'Markdown' });
+  }
+  
+  // Handle score command
+  else if (msg.text && (msg.text === '/score' || msg.text.startsWith('/score@'))) {
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, getScoreText(chatId), { parse_mode: 'Markdown' });
   }
   
   // Handle create game command for groups with stake options in text format
@@ -273,7 +363,8 @@ function updatePlayerStats(winner, loser, stakes, gameId) {
       losses: 0,
       points: 0,
       rounds: 0,
-      dollars: 0
+      dollars: 0,
+      chatIds: []
     };
   }
   if (!playerStats[loser.id]) {
@@ -283,8 +374,23 @@ function updatePlayerStats(winner, loser, stakes, gameId) {
       losses: 0,
       points: 0,
       rounds: 0,
-      dollars: 0
+      dollars: 0,
+      chatIds: []
     };
+  }
+  
+  // Track chat ID for leaderboard filtering
+  const chatId = gameOrigins[gameId];
+  if (chatId) {
+    if (!playerStats[winner.id].chatIds) playerStats[winner.id].chatIds = [];
+    if (!playerStats[loser.id].chatIds) playerStats[loser.id].chatIds = [];
+    
+    if (!playerStats[winner.id].chatIds.includes(chatId)) {
+      playerStats[winner.id].chatIds.push(chatId);
+    }
+    if (!playerStats[loser.id].chatIds.includes(chatId)) {
+      playerStats[loser.id].chatIds.push(chatId);
+    }
   }
   
   // Update stats
@@ -331,37 +437,40 @@ function postLeaderboard(gameId) {
       const stats = playerStats[id] || {
         name: game.players.find(p => p.id === id)?.name || 'Unknown',
         points: game.playerScores[id] || 0,
-        rounds: 0,
-        dollars: (game.playerScores[id] || 0) * game.baseStakeValue
+        rounds: game.roundHistory.length || 0,
+        dollars: (game.playerScores[id] || 0) * game.baseStakeValue,
+        wins: 0,
+        losses: 0
       };
+      
+      // Count wins and losses from game history if they're not tracked
+      if (!stats.wins || !stats.losses) {
+        stats.wins = game.roundHistory.filter(r => r.winner === id).length;
+        stats.losses = game.roundHistory.filter(r => r.loser === id).length;
+      }
+      
       return stats;
     })
     .sort((a, b) => b.points - a.points);
   
   // Generate leaderboard text
-  let leaderboardText = "🏆 *GAME LEADERBOARD* 🏆\n\n";
+  let leaderboardText = "🏆 *GAME RESULTS* 🏆\n\n";
   
   if (gameLeaderboard.length > 0) {
     gameLeaderboard.forEach((player, index) => {
       const pointsPerRound = player.rounds > 0 ? (player.points / player.rounds).toFixed(1) : '0.0';
       const dollarText = player.dollars >= 0 ? `+$${player.dollars}` : `-$${Math.abs(player.dollars)}`;
+      const pointsText = player.points >= 0 ? `+${player.points}` : `${player.points}`;
       
-      leaderboardText += `${index + 1}. *${player.name}*: ${player.points} points (${pointsPerRound} pts/round) ${dollarText}\n`;
+      leaderboardText += `${index + 1}. *${player.name}*: ${pointsText} points (${pointsPerRound} pts/round) ${dollarText}\n`;
+      leaderboardText += `   Rounds Played: ${player.rounds} | Win/Loss: ${player.wins}W/${player.losses}L\n\n`;
     });
   } else {
     leaderboardText += "No player statistics available yet.";
   }
   
   // Add a global stats section
-  leaderboardText += "\n\n*Global Leaderboard:*\n";
-  const globalLeaderboard = Object.values(playerStats)
-    .sort((a, b) => b.points - a.points)
-    .slice(0, 5);
-  
-  globalLeaderboard.forEach((player, index) => {
-    const pointsPerRound = player.rounds > 0 ? (player.points / player.rounds).toFixed(1) : '0.0';
-    leaderboardText += `${index + 1}. ${player.name}: ${player.points} pts (${pointsPerRound}/round)\n`;
-  });
+  leaderboardText += "\n\n*Global Leaderboard:*\nUse /score to see the all-time leaderboard!";
   
   // Send the leaderboard to the chat
   bot.sendMessage(chatId, leaderboardText, {
@@ -619,6 +728,7 @@ io.on('connection', (socket) => {
     io.to(gameId).emit('piCalled', {
       player: result.player,
       newStakes: result.newStakes,
+      piCount: result.piCount,
       state: game.getGameState()
     });
     
@@ -655,6 +765,9 @@ io.on('connection', (socket) => {
       winnerId: result.winner.id,
       penalty: result.penalty
     });
+    
+    // Update player stats
+    updatePlayerStats(result.winner, result.loser, result.penalty, gameId);
     
     // Notify all players about the fold
     io.to(gameId).emit('foldResult', {
@@ -812,7 +925,7 @@ io.on('connection', (socket) => {
 
 // Default route for the web app
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Start the server

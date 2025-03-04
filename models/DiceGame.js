@@ -150,6 +150,7 @@ class DiceGame {
           (count === this.currentBid.count && value > this.currentBid.value);
       } else if (this.currentBid) {
         // TSI after regular bid: can be equal or higher count with any value
+        // Fix: Allow TSI with same count but different value after a regular bid
         isValidBid = count >= this.currentBid.count;
       } else {
         // First bid of the game
@@ -157,11 +158,19 @@ class DiceGame {
       }
     }
     else if (isFly) {
-      // Fly after any bid: must double the count and exceed value if after Tsi
+      // Fly after any bid: must double the count
       const minCount = this.currentBid ? this.currentBid.count * 2 : 1;
-      isValidBid = 
-        (count >= minCount) && 
-        (!this.currentBid || !this.currentBid.isTsi || value > this.currentBid.value);
+      
+      // FLY after TSI: double count required and if same count, higher value after TSI
+      if (this.currentBid && this.currentBid.isTsi) {
+        isValidBid = count >= minCount;
+      } else {
+        // Not valid to do FLY after a non-TSI bid
+        return { 
+          success: false, 
+          message: "Fly (+) is only available after a Tsi (-) bid!" 
+        };
+      }
     }
     else if (this.currentBid && this.currentBid.isTsi) {
       // Must specify tsi or fly after a tsi bid
@@ -181,7 +190,7 @@ class DiceGame {
     if (!isValidBid) {
       let message = `Bid must be higher than the current bid: ${this.currentBid.count} ${this.currentBid.value}'s`;
       if (isTsi) {
-        message = `Tsi bid must exceed ${this.currentBid.count} ${this.currentBid.value}'s!`;
+        message = `Tsi bid must be at least ${this.currentBid.count} dice!`;
       } else if (isFly) {
         message = `Fly bid must double count to at least ${this.currentBid.count * 2}!`;
       }
@@ -323,6 +332,8 @@ class DiceGame {
     
     // Same as challenge but with higher stakes
     const result = this.challenge(playerId);
+    
+    // Note: The challenge method already updates scores and returns full result
     return result;
   }
 
@@ -409,6 +420,24 @@ class DiceGame {
   // Check if Pi is available (max 3 times)
   isPiAvailable() {
     return this.piCount < 3;
+  }
+  
+  // Helper to determine if challenger should use "Open" or "Call Liar!" button
+  shouldUseOpenButton() {
+    return this.stakes > 1;
+  }
+  
+  // Helper to determine if a player is in Pi response mode
+  isInPiResponseMode(playerId) {
+    if (this.stakes === 1 || !this.currentBid) return false;
+    
+    // Player is in Pi response mode if they are the current player
+    // but they did not make the last bid
+    return (
+      this.currentPlayerIndex !== null &&
+      this.players[this.currentPlayerIndex]?.id === playerId &&
+      this.currentBid.player !== playerId
+    );
   }
 }
 

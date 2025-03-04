@@ -483,8 +483,14 @@
       margin-bottom: 5px;
       font-weight: bold;
       position: relative;
-      top: -5px;
       width: 100%;
+      padding: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .round-indicator span {
+      margin: 0 5px;
     }
 
     #roundNumber {
@@ -550,12 +556,6 @@
     .dice-container {
       gap: 6px; /* Reduced from 8px */
       margin: 4px 0; /* Reduced from 10px 0 */
-    }
-
-    /* Optional: If you want to position the round indicator closer to dice */
-    .round-indicator {
-      margin-bottom: 2px;
-      margin-top: 0;
     }
 
     .dice:not(.dice-value-button .dice) .dice-dot[style*="top: 25%"] {
@@ -643,6 +643,12 @@
       color: var(--tg-theme-hint-color);
       margin-top: 10px;
     }
+
+    /* Round indicator separator */
+    .indicator-separator {
+      margin: 0 8px;
+      color: #4CAF50;
+    }
   </style>
 </head>
 <body>
@@ -695,14 +701,14 @@
           <h4>Bidding Types:</h4>
           <p><strong>Regular:</strong> Standard bid like "3 fours" means at least 3 dice showing 4 (or 1 as joker).</p>
           <p><strong>Tsi (-):</strong> Only counts the exact value, not jokers. "3 fours-" means exactly 3 dice showing 4.</p>
-          <p><strong>Fly (+):</strong> After any bid, you must at least double the count. After a Tsi, value must be higher.</p>
+          <p><strong>Fly (+):</strong> After a Tsi bid, you must at least double the count. Value can be anything.</p>
         </div>
         
         <div class="rule-section">
           <h4>Stake Actions:</h4>
           <p><strong>Pi (x2):</strong> Double the stakes (max 3 times to 8 points).</p>
           <p><strong>Fold:</strong> Give up after a Pi, lose half the stakes.</p>
-          <p><strong>Open:</strong> Call "liar" after a Pi, check if the bid is valid.</p>
+          <p><strong>Open:</strong> Challenge after a Pi, check if the bid is valid.</p>
         </div>
       </div>
     </div>
@@ -712,7 +718,13 @@
       <div class="game-layout">
         <div class="game-left-column">
           <div class="card dice-card">
-            <div class="round-indicator" id="roundIndicator">Round: <span id="roundNumber">1</span></div>
+            <div class="round-indicator" id="roundIndicator">
+              <span>Round: <span id="roundNumber">1</span></span>
+              <span class="indicator-separator">|</span>
+              <span id="scoreDisplay">+0p</span>
+              <span class="indicator-separator">|</span>
+              <span id="moneyDisplay">+$0</span>
+            </div>
             <h3>Your Dice</h3>
             <div id="diceContainer" class="dice-container"></div>
           </div>

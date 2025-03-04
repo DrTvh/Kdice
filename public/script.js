@@ -430,16 +430,6 @@ function updateBidValidity() {
           button.style.display = 'none';
         }
       });
-      
-      // If after a Tsi, value must exceed the Tsi value
-      if (game.currentBid.isTsi) {
-        valueButtons.forEach(button => {
-          const value = parseInt(button.dataset.value);
-          if (value <= game.currentBid.value) {
-            button.style.display = 'none';
-          }
-        });
-      }
     }
     else {
       // Regular bid after regular bid: standard rules
@@ -519,6 +509,12 @@ document.getElementById('tsiBtn').addEventListener('click', () => {
 document.getElementById('flyBtn').addEventListener('click', () => {
   if (!game.isMyTurn) {
     return; // Silently ignore if not your turn
+  }
+  
+  // FLY is only valid after a TSI bid
+  if (!game.currentBid || !game.currentBid.isTsi) {
+    // Fly is not available without a preceding Tsi bid
+    return;
   }
   
   // Toggle FLY
@@ -693,9 +689,7 @@ document.getElementById('bidBtn').addEventListener('click', () => {
     else if (game.isFly) {
       // Fly after any bid: must double the count and exceed value if after Tsi
       const minCount = game.currentBid.count * 2;
-      isValidBid = 
-        (game.bidCount >= minCount) && 
-        (!game.currentBid.isTsi || game.bidValue > game.currentBid.value);
+      isValidBid = game.bidCount >= minCount;
     }
     else if (!game.isTsi && !game.isFly && game.currentBid.isTsi) {
       // Must specify tsi or fly after a tsi bid
@@ -711,7 +705,7 @@ document.getElementById('bidBtn').addEventListener('click', () => {
     
     if (!isValidBid) {
       if (game.isTsi) {
-        alert(`Tsi bid must exceed ${game.currentBid.count} ${game.currentBid.value}'s!`);
+        alert(`Tsi bid must be at least ${game.currentBid.count} dice!`);
       } else if (game.isFly) {
         alert(`Fly bid must double count to at least ${game.currentBid.count * 2}!`);
       } else {
@@ -746,10 +740,18 @@ document.getElementById('challengeBtn').addEventListener('click', () => {
     return;
   }
   
-  socket.emit('challenge', {
-    gameId: game.gameId,
-    playerId: game.playerId
-  });
+  // Send appropriate event based on stakes
+  if (game.stakes > 1) {
+    socket.emit('open', {
+      gameId: game.gameId,
+      playerId: game.playerId
+    });
+  } else {
+    socket.emit('challenge', {
+      gameId: game.gameId,
+      playerId: game.playerId
+    });
+  }
   
   game.isMyTurn = false;
   updateGameControls();
@@ -844,9 +846,9 @@ socket.on('bidPlaced', ({ player, bid, state, nextPlayerId }) => {
   updateGameUI();
 });
 
-socket.on('piCalled', ({ player, newStakes, state }) => {
+socket.on('piCalled', ({ player, newStakes, piCount, state }) => {
   game.stakes = newStakes;
-  game.piCount = state.piCount;
+  game.piCount = piCount || state.piCount;
   
   // Update game state
   updateGameState(state, false);
@@ -1058,7 +1060,7 @@ socket.on('gameEnded', ({ state, leaderboard }) => {
     
     row.innerHTML = `
       <td>${player.name}${player.id === game.playerId ? ' (You)' : ''}</td>
-      <td>${player.points}</td>
+      <td>${player.points > 0 ? '+' : ''}${player.points}</td>
       <td>${dollarsDisplay}</td>
     `;
     leaderTable.appendChild(row);
@@ -1184,7 +1186,7 @@ function updateGameUI() {
     `-$${Math.abs(myScore * game.baseStakeValue)}`;
 
   document.getElementById('roundNumber').textContent = game.round;
-  roundIndicator.innerHTML = `Round: <span id="roundNumber">${game.round}</span> - ${scoreDisplay} - ${moneyDisplay}`;
+  roundIndicator.innerHTML = `Round: <span id="roundNumber">${game.round}</span>&nbsp;&nbsp;|&nbsp;&nbsp;${scoreDisplay}&nbsp;&nbsp;|&nbsp;&nbsp;${moneyDisplay}`;
   
   // Update control visibility based on turn
   updateGameControls();
@@ -1253,21 +1255,17 @@ function updateGameControls() {
   const bidControls = document.getElementById('bidControls');
   
   // Show controls only for the player whose turn it is
-  if (!game.isMyTurn) {
+  if (game.isMyTurn) {
+    bidControls.style.display = 'block';
+  } else {
     bidControls.style.display = 'none';
     return;
   }
   
-  // Show controls for player on turn
-  bidControls.style.display = 'block';
-  
   // Check if we're in Pi mode (responding to a Pi)
-  const isInPiResponse = game.stakes > 1 && game.isMyTurn && 
-                         game.currentPlayerIndex !== null && 
-                         game.players[game.currentPlayerIndex]?.id === game.playerId &&
+  const isInPiResponse = game.stakes > 1 && 
                          game.currentBid && 
-                         game.players.findIndex(p => p.id === game.playerId) !== 
-                         game.players.findIndex(p => p.id === game.currentBid.player);
+                         game.currentBid.player !== game.playerId;
   
   // Regular bid elements
   const countBidElem = document.querySelector('.bid-selector:nth-of-type(1)');
@@ -1287,6 +1285,13 @@ function updateGameControls() {
   const flyButton = document.getElementById('flyBtn');
   const isFlyAvailable = game.currentBid && game.currentBid.isTsi;
   flyButton.style.display = isFlyAvailable ? 'inline-block' : 'none';
+  
+  // Update challenge button - rename to "Open!" in Pi mode
+  if (game.stakes > 1) {
+    challengeBtn.textContent = 'Open!';
+  } else {
+    challengeBtn.textContent = 'Call Liar!';
+  }
   
   // First bid of the game
   if (!game.currentBid) {
@@ -1314,7 +1319,10 @@ function updateGameControls() {
     valueBidElem.style.display = 'none';
     bidTypeButtons.style.display = 'none';
     bidBtn.style.display = 'none';
-    challengeBtn.style.display = 'none';
+    
+    // Show challenge button as "Open!"
+    challengeBtn.textContent = 'Open!';
+    challengeBtn.style.display = 'block';
     
     // Show Pi mode controls
     const foldPenalty = Math.floor(game.stakes / 2);
