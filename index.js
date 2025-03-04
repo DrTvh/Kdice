@@ -168,9 +168,12 @@ io.on('connection', (socket) => {
   logger.info('User connected', { socketId: socket.id });
   
   // Create a new game
-  socket.on('createGame', ({ playerName, playerId }) => {
+  socket.on('createGame', ({ playerName, playerId, stakeValue = 100 }) => {
     const gameId = generateGameId();
     const game = new DiceGame(gameId);
+    
+    // Set the stake value
+    game.baseStakeValue = stakeValue;
     
     // Add the creator as first player
     game.addPlayer(playerId, playerName);
@@ -187,7 +190,7 @@ io.on('connection', (socket) => {
       state: game.getGameState(playerId) 
     });
     
-    logger.info(`Game created`, { gameId, playerName, playerId });
+    logger.info(`Game created`, { gameId, playerName, playerId, stakeValue });
   });
   
   // Join an existing game
@@ -304,15 +307,18 @@ io.on('connection', (socket) => {
     const result = game.placeBid(playerId, count, value, isTsi, isFly);
     
     if (result.success) {
+      // Get the next player who will take their turn
+      const nextPlayer = game.getCurrentPlayer();
+      
       // Send updated game state to all players
       io.to(gameId).emit('bidPlaced', { 
         player: game.players.find(p => p.id === playerId),
         bid: { count, value, isTsi, isFly },
-        state: game.getGameState()
+        state: game.getGameState(),
+        nextPlayerId: nextPlayer.id
       });
       
       // Send the next player their dice
-      const nextPlayer = game.getCurrentPlayer();
       io.to(gameId).emit('yourTurn', {
         state: game.getGameState(nextPlayer.id),
         playerId: nextPlayer.id
@@ -324,7 +330,8 @@ io.on('connection', (socket) => {
         count,
         value,
         isTsi,
-        isFly
+        isFly,
+        nextPlayerId: nextPlayer.id
       });
     } else {
       socket.emit('error', { message: result.message });

@@ -87,8 +87,19 @@ class DiceGame {
   }
 
   placeBid(playerId, count, value, isTsi, isFly) {
+    console.log('PlaceBid called', { playerId, currentPlayer: this.getCurrentPlayer()?.id });
+    
     if (playerId !== this.getCurrentPlayer().id) {
       return { success: false, message: "Not your turn" };
+    }
+    
+    // First bid of the game
+    if (this.currentBid === null) {
+      this.currentBid = { count, value, isTsi, isFly, player: playerId };
+      console.log('Before getNextPlayer', { currentIndex: this.currentPlayerIndex });
+      const nextPlayer = this.getNextPlayer();
+      console.log('After getNextPlayer', { currentIndex: this.currentPlayerIndex, nextPlayer: nextPlayer?.id });
+      return { success: true };
     }
     
     // Validate bid based on type
@@ -141,7 +152,7 @@ class DiceGame {
     }
     
     this.currentBid = { count, value, isTsi, isFly, player: playerId };
-    this.getNextPlayer();
+    const nextPlayer = this.getNextPlayer();
     return { success: true };
   }
 

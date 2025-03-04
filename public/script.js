@@ -3,14 +3,27 @@ const tgApp = window.Telegram.WebApp;
 tgApp.expand();
 tgApp.ready();
 
-// Connect to Socket.io server
-const socket = io();
+// Better extraction of user data
+let userData = {
+  id: Math.random().toString(36).substring(2, 10),
+  name: 'Player'
+};
+
+// Try to get user data from Telegram
+if (tgApp.initDataUnsafe && tgApp.initDataUnsafe.user) {
+  const user = tgApp.initDataUnsafe.user;
+  userData = {
+    id: user.id.toString(), // Ensure ID is a string
+    name: user.first_name || (user.username ? '@' + user.username : 'Player')
+  };
+  console.log('Telegram user data loaded:', userData);
+}
 
 // Game state variables
 let game = {
   gameId: null,
-  playerId: tgApp.initDataUnsafe?.user?.id || Math.random().toString(36).substring(2, 10),
-  playerName: tgApp.initDataUnsafe?.user?.first_name || 'Player',
+  playerId: userData.id,
+  playerName: userData.name,
   myDice: [],
   currentBid: null,
   currentPlayerIndex: null,
@@ -24,7 +37,8 @@ let game = {
   piCount: 0,    // Count of Pi calls in current round
   stakes: 1,     // Current stake multiplier
   baseStakeValue: 100, // Base stake value ($ per point)
-  playerScores: {} // Track scores for each player
+  playerScores: {}, // Track scores for each player
+  selectedStake: 100 // Default stake value
 };
 
 // DOM Elements
@@ -431,6 +445,20 @@ function updateBidValidity() {
   }
 }
 
+// Add event listeners for stake buttons
+document.querySelectorAll('.stake-button').forEach(button => {
+  button.addEventListener('click', () => {
+    const stake = parseInt(button.dataset.stake);
+    game.selectedStake = stake;
+    
+    // Update UI
+    document.querySelectorAll('.stake-button').forEach(btn => {
+      btn.classList.remove('selected');
+    });
+    button.classList.add('selected');
+  });
+});
+
 // Add event listeners for tsi/fly buttons
 document.getElementById('tsiBtn').addEventListener('click', () => {
   if (!game.isMyTurn) {
@@ -545,7 +573,8 @@ document.getElementById('openBtn').addEventListener('click', () => {
 document.getElementById('createGameBtn').addEventListener('click', () => {
   socket.emit('createGame', {
     playerName: game.playerName,
-    playerId: game.playerId
+    playerId: game.playerId,
+    stakeValue: game.selectedStake
   });
 });
 
@@ -734,7 +763,7 @@ socket.on('gameUpdate', ({ state }) => {
   updateGameUI();
 });
 
-socket.on('bidPlaced', ({ player, bid, state }) => {
+socket.on('bidPlaced', ({ player, bid, state, nextPlayerId }) => {
   // Add to bid history
   game.bidHistory.push({
     playerName: player.name,
@@ -755,6 +784,10 @@ socket.on('bidPlaced', ({ player, bid, state }) => {
   
   // Update general game state (without dice)
   updateGameState(state, false);
+  
+  // Explicitly check if it's my turn now
+  game.isMyTurn = nextPlayerId === game.playerId;
+  
   updateGameUI();
 });
 

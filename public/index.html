@@ -313,10 +313,6 @@
       height: 6px;
     }
 
-    .bid-type-selector {
-      margin-top: 15px;
-    }
-    
     .bid-type-button {
       padding: 8px 15px;
       border-radius: 8px;
@@ -578,6 +574,23 @@ h2 {
   right: 20% !important;
 }
 
+/* New stake options styling */
+.stake-options {
+  margin: 15px 0;
+}
+.stake-button {
+  background-color: var(--tg-theme-secondary-bg-color);
+  color: var(--tg-theme-text-color);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 4px;
+  cursor: pointer;
+}
+.stake-button.selected {
+  background-color: var(--tg-theme-button-color);
+  color: var(--tg-theme-button-text-color);
+}
   </style>
 </head>
 <body>
@@ -589,6 +602,16 @@ h2 {
         Welcome to the Dice Game! In this game, players take turns making bids about how many dice of a certain value are in play.
         The "1" dice are jokers and can be any value. Challenge a bid if you think it's too high!
       </p>
+      <div class="stake-options">
+        <div class="bid-label">Select Stake Value:</div>
+        <div class="bid-buttons">
+          <button class="stake-button" data-stake="0">Free ($0)</button>
+          <button class="stake-button selected" data-stake="100">Low ($100)</button>
+          <button class="stake-button" data-stake="500">Medium ($500)</button>
+          <button class="stake-button" data-stake="1000">High ($1000)</button>
+          <button class="stake-button" data-stake="10000">VIP ($10000)</button>
+        </div>
+      </div>
       <button id="createGameBtn" class="button">Create New Game</button>
       <p style="text-align: center; margin: 10px 0;">OR</p>
       <input id="gameIdInput" type="text" placeholder="Enter Game ID to Join" maxlength="8">
@@ -671,9 +694,9 @@ h2 {
         </div>
         
         <div class="bid-buttons bid-type-buttons" style="margin-top: 8px;">
-  <button id="tsiBtn" class="bid-type-button">Tsi (-)</button>
-  <button id="flyBtn" class="bid-type-button">Fly (+)</button>
-</div>
+          <button id="tsiBtn" class="bid-type-button">Tsi (-)</button>
+          <button id="flyBtn" class="bid-type-button">Fly (+)</button>
+        </div>
         
         <div class="action-buttons">
           <button id="bidBtn" class="button">Place Bid</button>
