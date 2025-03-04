@@ -1,10 +1,75 @@
+// Debug helpers
+function logError(msg, error) {
+  console.error(`[ERROR] ${msg}`, error);
+  // Try to display error on screen
+  try {
+    const errorDiv = document.createElement('div');
+    errorDiv.style.color = 'red';
+    errorDiv.style.padding = '10px';
+    errorDiv.style.margin = '10px';
+    errorDiv.style.border = '1px solid red';
+    errorDiv.style.backgroundColor = 'rgba(255,0,0,0.1)';
+    errorDiv.textContent = `Error: ${msg} - ${error?.message || error}`;
+    document.body.prepend(errorDiv);
+  } catch(e) {
+    console.error('Could not display error on screen', e);
+  }
+}
+
+// Global error handler
+window.onerror = function(message, source, lineno, colno, error) {
+  logError(`Global error at ${source}:${lineno}:${colno}`, error || message);
+  return false;
+};
+
 // Initialize Telegram WebApp
-const tgApp = window.Telegram.WebApp;
-tgApp.expand();
-tgApp.ready();
+let tgApp;
+try {
+  tgApp = window.Telegram?.WebApp;
+  if (!window.Telegram || !window.Telegram.WebApp) {
+    console.warn('Telegram WebApp not found, using fallback mode');
+    tgApp = {
+      expand: () => console.log('Fallback expand'),
+      ready: () => console.log('Fallback ready'),
+      HapticFeedback: {
+        notificationOccurred: () => console.log('Fallback haptic')
+      },
+      close: () => console.log('Fallback close')
+    };
+  } else {
+    tgApp.expand();
+    tgApp.ready();
+  }
+} catch(error) {
+  logError('Error initializing Telegram WebApp', error);
+  tgApp = {
+    expand: () => {},
+    ready: () => {},
+    HapticFeedback: {
+      notificationOccurred: () => {}
+    },
+    close: () => {}
+  };
+}
 
 // Connect to Socket.io server
 const socket = io();
+// Socket.io error handling
+socket.on('connect_error', (error) => {
+  logError('Socket connection error', error);
+});
+
+socket.on('error', (error) => {
+  logError('Socket error', error);
+});
+
+socket.on('connect', () => {
+  console.log('Socket connected successfully');
+});
+
+socket.on('disconnect', (reason) => {
+  console.log('Socket disconnected:', reason);
+});
 
 // Extract user data, prioritizing Telegram WebApp data
 let userData = {
@@ -513,7 +578,15 @@ function updateBidValidity() {
 }
 
 // Register event listeners after DOM has fully loaded
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function() {console.log('DOM fully loaded');
+  
+  // Debug button clicks
+  document.querySelectorAll('button').forEach(button => {
+    const originalClick = button.onclick;
+    button.addEventListener('click', function(event) {
+      console.log(`Button clicked: ${button.id || button.textContent}`);
+    }, true); // Use capture to ensure this runs first
+  });
   // Add event listeners for stake buttons
   document.querySelectorAll('.stake-button').forEach(button => {
     button.addEventListener('click', () => {
@@ -644,13 +717,18 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // Create new game
-  document.getElementById('createGameBtn').addEventListener('click', () => {
+document.getElementById('createGameBtn').addEventListener('click', () => {
+  try {
+    console.log('Create game button clicked with stake:', game.selectedStake);
     socket.emit('createGame', {
       playerName: game.playerName,
       playerId: game.playerId,
       stakeValue: game.selectedStake
     });
-  });
+  } catch (error) {
+    logError('Error in createGame handler', error);
+  }
+});
 
   // Join existing game
   document.getElementById('joinGameBtn').addEventListener('click', () => {

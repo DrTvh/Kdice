@@ -147,36 +147,14 @@ bot.on('message', (msg) => {
   // Check if the message is a valid text message
   if (!msg.text) return;
   
- // Check if bot was mentioned or directly addressed in group
-const isBotMention = msg.entities && msg.entities.some(entity => 
-  entity.type === 'mention' && 
-  msg.text.substring(entity.offset, entity.offset + entity.length).includes('@')
-);
-
-// Get the command - could be /command or /command@botname
-let command = msg.text.split(' ')[0].toLowerCase();
-let isDirectCommand = command.startsWith('/');
-let commandBase = '';
-
-if (isDirectCommand) {
-  // Extract base command name (remove the bot username if present)
-  commandBase = command.split('@')[0].substring(1); // Remove the / and potential @username
-}
-
-// Handle bot mentions or name references
-if (isBotMention || (msg.text && (msg.text.toLowerCase().includes('@dicebotka') || msg.text.toLowerCase().includes('dicebotka')))) {
-  bot.sendMessage(msg.chat.id, getHelpText(), { parse_mode: 'Markdown' });
-  return;
-}
+  // Log the entire message for debugging
+  logger.debug('Full message object', msg);
+  
+  // Check for direct commands first
+  const command = msg.text.split(' ')[0].toLowerCase();
   
   // Handle start command
-  if (commandBase === 'start') {
-    bot.sendMessage(msg.chat.id, getHelpText(), { parse_mode: 'Markdown' });
-    return;
-  }
-  
-  // Handle start command
-  if (msg.text && (msg.text === '/start' || msg.text.startsWith('/start@'))) {
+  if (command === '/start' || command.startsWith('/start@')) {
     const chatId = msg.chat.id;
     const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
     
@@ -191,22 +169,23 @@ if (isBotMention || (msg.text && (msg.text.toLowerCase().includes('@dicebotka') 
         }
       });
     }
+    return;
   }
   
   // Handle rules command
-  else if (msg.text && (msg.text === '/rules' || msg.text.startsWith('/rules@'))) {
-    const chatId = msg.chat.id;
-    bot.sendMessage(chatId, getRulesText(), { parse_mode: 'Markdown' });
+  if (command === '/rules' || command.startsWith('/rules@')) {
+    bot.sendMessage(msg.chat.id, getRulesText(), { parse_mode: 'Markdown' });
+    return;
   }
   
   // Handle score command
-  else if (msg.text && (msg.text === '/score' || msg.text.startsWith('/score@'))) {
-    const chatId = msg.chat.id;
-    bot.sendMessage(chatId, getScoreText(chatId), { parse_mode: 'Markdown' });
+  if (command === '/score' || command.startsWith('/score@')) {
+    bot.sendMessage(msg.chat.id, getScoreText(msg.chat.id), { parse_mode: 'Markdown' });
+    return;
   }
   
-  // Handle create game command for groups with stake options in text format
-  else if (msg.text && (msg.text === '/creategame' || msg.text.startsWith('/creategame@'))) {
+  // Handle create game command
+  if (command === '/creategame' || command.startsWith('/creategame@')) {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const userName = msg.from.first_name || 'Player';
@@ -230,10 +209,11 @@ if (isBotMention || (msg.text && (msg.text.toLowerCase().includes('@dicebotka') 
         ]
       }
     });
+    return;
   }
   
-  // Handle join game command for groups
-  else if (msg.text && (msg.text === '/join' || msg.text.startsWith('/join@'))) {
+  // Handle join game command
+  if (command === '/join' || command.startsWith('/join@')) {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const userName = msg.from.first_name || 'Player';
@@ -284,6 +264,22 @@ if (isBotMention || (msg.text && (msg.text.toLowerCase().includes('@dicebotka') 
         inline_keyboard: keyboard
       }
     });
+    return;
+  }
+  
+  // Check if bot was mentioned or name was included in the message
+  const botMentioned = 
+    (msg.entities && msg.entities.some(entity => 
+      entity.type === 'mention' && 
+      msg.text.substring(entity.offset, entity.offset + entity.length).includes('@KDiceBot')
+    )) ||
+    msg.text.toLowerCase().includes('@kdicebot') ||
+    msg.text.toLowerCase().includes('kdicebot');
+  
+  if (botMentioned) {
+    logger.info('Bot was mentioned or name included in message');
+    bot.sendMessage(msg.chat.id, getHelpText(), { parse_mode: 'Markdown' });
+    return;
   }
 });
 
@@ -515,7 +511,11 @@ io.on('connection', (socket) => {
   logger.info('New socket connection', { socketId: socket.id });
   
   // Handle creating a new game
-  socket.on('createGame', ({ playerName, playerId, stakeValue }) => {
+socket.on('createGame', ({ playerName, playerId, stakeValue }) => {
+  try {
+    // Log the request
+    logger.info('Creating game', { playerName, playerId, stakeValue });
+    
     // Ensure valid player data
     if (!playerName || !playerId) {
       socket.emit('error', { message: 'Missing player information' });
@@ -538,14 +538,18 @@ io.on('connection', (socket) => {
     // Subscribe the socket to the game room
     socket.join(gameId);
     
-    logger.info('Game created', { gameId, playerName, playerId });
+    logger.info('Game created successfully', { gameId, playerName, playerId });
     
     // Send response to the client
     socket.emit('gameCreated', {
       gameId,
       state: game.getGameState(playerId)
     });
-  });
+  } catch (error) {
+    logger.error('Error creating game', error);
+    socket.emit('error', { message: 'Error creating game: ' + (error.message || 'Unknown error') });
+  }
+});
   
   // Handle joining an existing game
   socket.on('joinGame', ({ gameId, playerName, playerId }) => {
@@ -955,6 +959,17 @@ socket.on('endGame', ({ gameId, playerId }) => {
 // Default route for the web app
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    activeGames: Object.keys(activeGames).length,
+    botWebhookPath: webhookPath
+  });
 });
 
 // Start the server
