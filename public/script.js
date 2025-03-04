@@ -56,7 +56,12 @@ try {
 const socket = io();
 // Socket.io error handling
 socket.on('connect_error', (error) => {
-  logError('Socket connection error', error);
+  logError('Socket connection error', error);game.selectedStake);
+    socket.emit
+  // Try reconnecting
+  setTimeout(() => {
+    socket.connect();
+  }, 1000);
 });
 
 socket.on('error', (error) => {
@@ -580,18 +585,18 @@ function updateBidValidity() {
 
   
   // Debug button clicks
-  document.querySelectorAll('button').forEach(button => {
-    const originalClick = button.onclick;
-    button.addEventListener('click', function(event) {
-      console.log(`Button clicked: ${button.id || button.textContent}`);
-    }, true); // Use capture to ensure this runs first
-  });
+ 
   // Add event listeners for stake buttons
   document.querySelectorAll('.stake-button').forEach(button => {
     button.addEventListener('click', () => {
       const stake = parseInt(button.dataset.stake);
       game.selectedStake = stake;
-      
+      document.querySelectorAll('button').forEach(button => {
+        button.addEventListener('click', function(event) {
+          console.log(`Button clicked: ${button.id || button.textContent}`);
+        });
+      });
+
       // Update UI
       document.querySelectorAll('.stake-button').forEach(btn => {
         btn.classList.remove('selected');
@@ -717,19 +722,27 @@ function updateBidValidity() {
 
   
 
-  // Join existing game
-  document.getElementById('joinGameBtn').addEventListener('click', () => {
-    const gameId = document.getElementById('gameIdInput').value.trim();
-    if (gameId) {
+ // Join existing game
+document.getElementById('joinGameBtn').addEventListener('click', () => {
+  const gameId = document.getElementById('gameIdInput').value.trim();
+  if (gameId) {
+    // Make sure socket is connected
+    if (!socket.connected) {
+      console.log('Socket reconnecting...');
+      socket.connect();
+    }
+    
+    setTimeout(() => {
       socket.emit('joinGame', {
         gameId,
         playerName: game.playerName,
         playerId: game.playerId
       });
-    } else {
-      alert('Please enter a valid Game ID');
-    }
-  });
+    }, 100); // Small delay to ensure socket is ready
+  } else {
+    alert('Please enter a valid Game ID');
+  }
+});
 
   // Start game
   document.getElementById('startGameBtn').addEventListener('click', () => {

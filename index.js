@@ -37,8 +37,11 @@ const io = new Server(server);
 // Add JSON body parser middleware
 app.use(express.json());
 
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static files with explicit cache control
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: false,
+  maxAge: 0
+}));
 
 // Initialize Telegram Bot with webhook (Polling is more reliable for development)
 let bot;
