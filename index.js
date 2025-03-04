@@ -147,27 +147,27 @@ bot.on('message', (msg) => {
   // Check if the message is a valid text message
   if (!msg.text) return;
   
-  // Check if bot was mentioned or directly addressed in group
-  const isBotMention = msg.entities && msg.entities.some(entity => 
-    entity.type === 'mention' && 
-    msg.text.substring(entity.offset, entity.offset + entity.length).includes('@')
-  );
-  
-  // Get the command - could be /command or /command@botname
-  let command = msg.text.split(' ')[0].toLowerCase();
-  let isDirectCommand = command.startsWith('/');
-  let commandBase = '';
-  
-  if (isDirectCommand) {
-    // Extract base command name (remove the bot username if present)
-    commandBase = command.split('@')[0].substring(1); // Remove the / and potential @username
-  }
-  
-  // Handle bot mentions
-  if (isBotMention) {
-    bot.sendMessage(msg.chat.id, getHelpText(), { parse_mode: 'Markdown' });
-    return;
-  }
+ // Check if bot was mentioned or directly addressed in group
+const isBotMention = msg.entities && msg.entities.some(entity => 
+  entity.type === 'mention' && 
+  msg.text.substring(entity.offset, entity.offset + entity.length).includes('@')
+);
+
+// Get the command - could be /command or /command@botname
+let command = msg.text.split(' ')[0].toLowerCase();
+let isDirectCommand = command.startsWith('/');
+let commandBase = '';
+
+if (isDirectCommand) {
+  // Extract base command name (remove the bot username if present)
+  commandBase = command.split('@')[0].substring(1); // Remove the / and potential @username
+}
+
+// Handle bot mentions or name references
+if (isBotMention || (msg.text && (msg.text.toLowerCase().includes('@dicebotka') || msg.text.toLowerCase().includes('dicebotka')))) {
+  bot.sendMessage(msg.chat.id, getHelpText(), { parse_mode: 'Markdown' });
+  return;
+}
   
   // Handle start command
   if (commandBase === 'start') {
@@ -451,7 +451,12 @@ function postLeaderboard(gameId) {
   const chatId = gameOrigins[gameId];
   const game = activeGames[gameId];
   
-  if (!chatId || !game) return;
+  if (!chatId || !game) {
+    logger.error('Cannot post leaderboard - missing chatId or game', { gameId, chatId: chatId || 'missing', gameExists: !!game });
+    return;
+  }
+  
+  logger.info('Posting leaderboard to chat', { gameId, chatId });
   
   // Create a sorted leaderboard of just the players in this game
   const gamePlayerIds = game.players.map(p => p.id);
@@ -879,37 +884,38 @@ io.on('connection', (socket) => {
   });
   
   // Handle ending the game
-  socket.on('endGame', ({ gameId }) => {
-    // Check if the game exists
-    if (!activeGames[gameId]) {
-      socket.emit('error', { message: 'Game not found' });
-      return;
-    }
-    
-    // Get the game instance
-    const game = activeGames[gameId];
-    
-    // End the game
-    const result = game.endGame();
-    
-    if (!result.success) {
-      socket.emit('error', { message: 'Failed to end game' });
-      return;
-    }
-    
-    logger.info('Game ended', { gameId });
-    
-    // Notify all players
-    io.to(gameId).emit('gameEnded', {
-      state: game.getGameState(),
-      leaderboard: result.leaderboard
-    });
-    
-    // Post leaderboard to group chat if from there
-    if (game.originChatId) {
-      postLeaderboard(gameId);
-    }
+socket.on('endGame', ({ gameId, playerId }) => {
+  // Check if the game exists
+  if (!activeGames[gameId]) {
+    socket.emit('error', { message: 'Game not found' });
+    return;
+  }
+  
+  // Get the game instance
+  const game = activeGames[gameId];
+  
+  // End the game
+  const result = game.endGame();
+  
+  if (!result.success) {
+    socket.emit('error', { message: 'Failed to end game' });
+    return;
+  }
+  
+  logger.info('Game ended', { gameId, endedBy: playerId });
+  
+  // Notify all players
+  io.to(gameId).emit('gameEnded', {
+    state: game.getGameState(),
+    leaderboard: result.leaderboard,
+    endedBy: playerId
   });
+  
+  // Post leaderboard to group chat if from there
+  if (game.originChatId) {
+    postLeaderboard(gameId);
+  }
+});
   
   // Handle player leaving a game
   socket.on('leaveGame', ({ gameId, playerId }) => {

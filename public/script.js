@@ -1024,11 +1024,11 @@ function updateGameControls() {
   
   // Pi mode
   if (isInPiResponse) {
-    // Hide regular bidding controls
-    countBidElem.style.display = 'none';
-    valueBidElem.style.display = 'none';
-    bidTypeButtons.style.display = 'none';
-    bidBtn.style.display = 'none';
+    // Hide ALL regular bidding controls when in Pi response mode
+countBidElem.style.display = 'none';
+valueBidElem.style.display = 'none';
+bidTypeButtons.style.display = 'none';
+bidBtn.style.display = 'none';
     
     // Show challenge button as "Open!"
     challengeBtn.textContent = 'Open!';
@@ -1046,9 +1046,10 @@ function updateGameControls() {
       piBtn.style.display = 'none';
     }
     
-    // Show Fold with penalty amount - Always show after first Pi
-    foldBtn.textContent = `Fold (-${foldPenalty}p)`;
-    foldBtn.style.display = 'block'; // Always show fold button when stakes > 1
+    /// Show Fold with penalty amount - Always show after Pi
+const foldPenalty = Math.floor(game.stakes / 2);
+foldBtn.textContent = `Fold (-${foldPenalty}p)`;
+foldBtn.style.display = 'block'; // Always show fold button when stakes > 1
     
     // Show Open button
     openBtn.style.display = 'none'; // Use challengeBtn instead (renamed to "Open!")
@@ -1159,6 +1160,12 @@ socket.on('bidPlaced', ({ player, bid, state, nextPlayerId }) => {
   
   // Update current bid display
   updateCurrentBidDisplay();
+  // Enforce TSI mode if the previous bid was a 1 value or TSI
+if (bid.value === 1 || bid.isTsi) {
+  game.isTsi = true;
+  document.getElementById('tsiBtn').classList.add('selected');
+  document.getElementById('flyBtn').classList.remove('selected');
+}
   
   // Update general game state (without dice)
   updateGameState(state, false);
@@ -1415,20 +1422,19 @@ socket.on('gameEnded', ({ state, leaderboard, endedBy }) => {
   leaderboardElem.appendChild(leaderTable);
   
   // Show different message based on who ended the game and if it was you
-  const gameEndText = document.getElementById('gameEndText');
-  const endedByName = game.players.find(p => p.id === endedBy)?.name || 'Unknown';
-  
-  if (endedBy === game.playerId) {
-    gameEndText.innerHTML = `
-      <p>You ended the game. Thanks for playing!</p>
-      <p>A full leaderboard has been posted to the group chat.</p>
-    `;
-  } else {
-    gameEndText.innerHTML = `
-      <p>${endedByName} ended the game. Thanks for playing!</p>
-      <p>A full leaderboard has been posted to the group chat.</p>
-    `;
-  }
+const gameEndText = document.getElementById('gameEndText');
+const endedByPlayer = game.players.find(p => p.id === game.endedBy);
+const endedByName = endedByPlayer ? endedByPlayer.name : 'Unknown';
+
+if (game.endedBy === game.playerId) {
+  gameEndText.innerHTML = `
+    <p>You ended the game. Thanks for playing!</p>
+  `;
+} else {
+  gameEndText.innerHTML = `
+    <p>${endedByName} was a chicken-Jew and left. Thanks for playing!</p>
+  `;
+}
   
   // Show game end screen
   showScreen('gameEnd');
