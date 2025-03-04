@@ -8,7 +8,7 @@ const socket = io();
 
 // Better extraction of user data
 let userData = {
-  id: Math.random().toString(36).substring(2, 10),
+  id: 'player_' + Math.random().toString(36).substring(2, 10),
   name: 'Player'
 };
 
@@ -16,7 +16,7 @@ let userData = {
 if (tgApp.initDataUnsafe && tgApp.initDataUnsafe.user) {
   const user = tgApp.initDataUnsafe.user;
   userData = {
-    id: user.id.toString(), // Ensure ID is a string
+    id: 'tg_' + user.id.toString(), // Add prefix for consistency
     name: user.first_name || (user.username ? '@' + user.username : 'Player')
   };
   console.log('Telegram user data loaded:', userData);
@@ -760,12 +760,17 @@ socket.on('gameCreated', ({ gameId, state }) => {
   showScreen('lobby');
 });
 
-socket.on('gameJoined', ({ gameId, state }) => {
+socket.on('gameJoined', ({ gameId, state, alreadyJoined }) => {
   game.gameId = gameId;
   updateGameState(state);
   
   // Update lobby player list
   updateLobbyPlayerList();
+  
+  // Show notification if we were already in the game
+  if (alreadyJoined) {
+    alert("You're already in this game!");
+  }
   
   // Switch to lobby screen
   showScreen('lobby');

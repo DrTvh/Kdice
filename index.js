@@ -257,53 +257,73 @@ io.on('connection', (socket) => {
     logger.info(`Game created`, { gameId, playerName, playerId, stakeValue });
   });
   
-  // Join an existing game
-  socket.on('joinGame', ({ gameId, playerName, playerId }) => {
-    const game = activeGames[gameId];
-    
-    if (!game) {
-      socket.emit('error', { message: 'Game not found' });
-      logger.error(`Join failed - game not found`, { gameId, playerId });
-      return;
-    }
-    
-    if (game.gameStarted) {
-      socket.emit('error', { message: 'Game already started' });
-      logger.error(`Join failed - game already started`, { gameId, playerId });
-      return;
-    }
-    
-    if (game.addPlayer(playerId, playerName)) {
-      // Join the socket to the game room
-      socket.join(gameId);
-      
-      // Notify all players about the new player
-      io.to(gameId).emit('playerJoined', { 
-        player: { id: playerId, name: playerName },
-        state: game.getGameState()
-      });
-      
-      // Send the new player their complete state
-      socket.emit('gameJoined', { 
-        gameId,
-        state: game.getGameState(playerId) 
-      });
-      
-      logger.info(`Player joined game`, { gameId, playerName, playerId });
-      
-      // If this game was created from a group chat, announce the join
-      if (game.originChatId) {
-        const creatorName = game.players[0].name;
-        bot.sendMessage(game.originChatId, 
-          `${playerName} joined ${creatorName}'s game! The game can now begin.`
-        );
-      }
-    } else {
-      socket.emit('error', { message: 'Failed to join game' });
-      logger.error(`Join failed - could not add player`, { gameId, playerId });
-    }
-  });
+// Join an existing game
+socket.on('joinGame', ({ gameId, playerName, playerId }) => {
+  const game = activeGames[gameId];
   
+  if (!game) {
+    socket.emit('error', { message: 'Game not found' });
+    logger.error(`Join failed - game not found`, { gameId, playerId });
+    return;
+  }
+  
+  if (game.gameStarted) {
+    socket.emit('error', { message: 'Game already started' });
+    logger.error(`Join failed - game already started`, { gameId, playerId });
+    return;
+  }
+  
+  // Check if this player already exists in the game
+  const existingPlayerIndex = game.players.findIndex(p => 
+    p.id === playerId || // Same ID
+    (p.name === playerName && playerName !== 'Player') // Same name (unless generic)
+  );
+  
+  if (existingPlayerIndex !== -1) {
+    // If player already exists, return their state but don't add again
+    logger.info(`Player already in game`, { gameId, playerName, playerId });
+    
+    socket.join(gameId);
+    socket.emit('gameJoined', { 
+      gameId,
+      state: game.getGameState(game.players[existingPlayerIndex].id),
+      alreadyJoined: true
+    });
+    return;
+  }
+  
+  // Normal join logic for new players
+  if (game.addPlayer(playerId, playerName)) {
+    // Join the socket to the game room
+    socket.join(gameId);
+    
+    // Notify all players about the new player
+    io.to(gameId).emit('playerJoined', { 
+      player: { id: playerId, name: playerName },
+      state: game.getGameState()
+    });
+    
+    // Send the new player their complete state
+    socket.emit('gameJoined', { 
+      gameId,
+      state: game.getGameState(playerId) 
+    });
+    
+    logger.info(`Player joined game`, { gameId, playerName, playerId });
+    
+    // If this game was created from a group chat, announce the join
+    if (game.originChatId) {
+      const creatorName = game.players[0].name;
+      bot.sendMessage(game.originChatId, 
+        `${playerName} joined ${creatorName}'s game! The game can now begin.`
+      );
+    }
+  } else {
+    socket.emit('error', { message: 'Failed to join game' });
+    logger.error(`Join failed - could not add player`, { gameId, playerId });
+  }
+});
+   
   // Start the game
   socket.on('startGame', ({ gameId, playerId }) => {
     const game = activeGames[gameId];

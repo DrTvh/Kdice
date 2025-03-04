@@ -38,19 +38,27 @@ class DiceGame {
     });
   }
 
-  addPlayer(playerId, playerName) {
-    if (this.players.length >= 6) {
-      return false;
-    }
-    
-    if (!this.players.some(player => player.id === playerId)) {
-      this.players.push({ id: playerId, name: playerName });
-      return true;
-    }
-    
+ addPlayer(playerId, playerName) {
+  // Check max players
+  if (this.players.length >= 6) {
     return false;
   }
-
+  
+  // Check both ID and name (unless generic name 'Player')
+  const existingPlayer = this.players.find(p => 
+    p.id === playerId || 
+    (p.name === playerName && playerName !== 'Player')
+  );
+  
+  if (existingPlayer) {
+    // Player already exists
+    return false;
+  }
+  
+  // Add the new player
+  this.players.push({ id: playerId, name: playerName });
+  return true;
+}
   removePlayer(playerId) {
     const index = this.players.findIndex(player => player.id === playerId);
     if (index !== -1) {
