@@ -129,7 +129,11 @@ class DiceGame {
     if (playerId !== this.getCurrentPlayer().id) {
       return { success: false, message: "Not your turn" };
     }
-    
+      // The value of 1 in a bid is always TSI mode
+      if (value === 1) {
+        isTsi = true;
+      }
+      
     // First bid of the game
     if (this.currentBid === null) {
       this.currentBid = { count, value, isTsi, isFly, player: playerId };

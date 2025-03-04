@@ -141,13 +141,36 @@ bot.on('message', (msg) => {
     msgText: msg.text, 
     chatType: msg.chat.type,
     chatId: msg.chat.id,
-    from: msg.from.username || msg.from.first_name
+    from: msg.from?.username || msg.from?.first_name || 'Unknown'
   });
   
-  // Check if bot was mentioned
-  const botMention = `@${bot.getMe().then(botInfo => botInfo.username).catch(() => 'KdiceBot')}`;
+  // Check if the message is a valid text message
+  if (!msg.text) return;
   
-  if (msg.text && msg.text.includes(botMention)) {
+  // Check if bot was mentioned or directly addressed in group
+  const isBotMention = msg.entities && msg.entities.some(entity => 
+    entity.type === 'mention' && 
+    msg.text.substring(entity.offset, entity.offset + entity.length).includes('@')
+  );
+  
+  // Get the command - could be /command or /command@botname
+  let command = msg.text.split(' ')[0].toLowerCase();
+  let isDirectCommand = command.startsWith('/');
+  let commandBase = '';
+  
+  if (isDirectCommand) {
+    // Extract base command name (remove the bot username if present)
+    commandBase = command.split('@')[0].substring(1); // Remove the / and potential @username
+  }
+  
+  // Handle bot mentions
+  if (isBotMention) {
+    bot.sendMessage(msg.chat.id, getHelpText(), { parse_mode: 'Markdown' });
+    return;
+  }
+  
+  // Handle start command
+  if (commandBase === 'start') {
     bot.sendMessage(msg.chat.id, getHelpText(), { parse_mode: 'Markdown' });
     return;
   }

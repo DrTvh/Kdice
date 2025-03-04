@@ -1016,7 +1016,7 @@ function updateGameControls() {
     
     // Hide Pi mode controls
     piBtn.style.display = 'none';
-    foldBtn.style.display = 'block';
+    foldBtn.style.display = 'none';
     openBtn.style.display = 'none';
     
     return;
@@ -1432,20 +1432,7 @@ socket.on('gameEnded', ({ state, leaderboard, endedBy }) => {
   
   // Show game end screen
   showScreen('gameEnd');
-
-  // Initialize the game interface once DOM is fully loaded
-document.addEventListener('DOMContentLoaded', function() {
-  // Check for game join parameter
-  checkForGameJoin();
-  
-  // Initialize event listeners for all buttons
-  initializeEventListeners();
 });
 
-// Move all button event listeners to this function
-function initializeEventListeners() {
-  // All your button event listeners go here
-  document.getElementById('createGameBtn').addEventListener('click', ...);
-  document.getElementById('joinGameBtn').addEventListener('click', ...);
-  // etc.
-}
+// Check for game join parameter when the page loads
+window.addEventListener('load', checkForGameJoin);
