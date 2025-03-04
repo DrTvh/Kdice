@@ -30,8 +30,8 @@ app.post(webhookPath, (req, res) => {
   res.sendStatus(200);
 });
 
-// Respond to /start command
-bot.onText(/\/start/, (msg) => {
+// Respond to /start command - works in both direct and group chats
+bot.onText(/\/start(@KdiceBot)?/, (msg) => {
   const chatId = msg.chat.id;
   bot.sendMessage(chatId, "Welcome to Kdice! Click below to play:", {
     reply_markup: {
