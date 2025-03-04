@@ -72,9 +72,20 @@ socket.on('connect', () => {
   console.log('Socket connected successfully');
 });
 
+socket.on('connect', () => {
+  console.log('Socket connected successfully');
+  // Enable buttons when connection is established
+  document.getElementById('createGameBtn').disabled = false;
+  document.getElementById('joinGameBtn').disabled = false;
+});
+
 socket.on('disconnect', (reason) => {
   console.log('Socket disconnected:', reason);
 });
+
+// Initially disable buttons until connection is established
+document.getElementById('createGameBtn').disabled = true;
+document.getElementById('joinGameBtn').disabled = true;
 
 // Extract user data, prioritizing Telegram WebApp data
 let userData = {
@@ -583,9 +594,6 @@ function updateBidValidity() {
 }
 
 
-  
-  // Debug button clicks
- 
   // Add event listeners for stake buttons
   document.querySelectorAll('.stake-button').forEach(button => {
     button.addEventListener('click', () => {
@@ -720,29 +728,19 @@ function updateBidValidity() {
     updateGameControls();
   });
 
-  
-
  // Join existing game
-document.getElementById('joinGameBtn').addEventListener('click', () => {
+document.getElementById('joinGameBtn').onclick = function() {
   const gameId = document.getElementById('gameIdInput').value.trim();
   if (gameId) {
-    // Make sure socket is connected
-    if (!socket.connected) {
-      console.log('Socket reconnecting...');
-      socket.connect();
-    }
-    
-    setTimeout(() => {
-      socket.emit('joinGame', {
-        gameId,
-        playerName: game.playerName,
-        playerId: game.playerId
-      });
-    }, 100); // Small delay to ensure socket is ready
+    socket.emit('joinGame', {
+      gameId,
+      playerName: game.playerName,
+      playerId: game.playerId
+    });
   } else {
     alert('Please enter a valid Game ID');
   }
-});
+};
 
   // Start game
   document.getElementById('startGameBtn').addEventListener('click', () => {
