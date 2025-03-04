@@ -48,6 +48,15 @@ app.post(webhookPath, (req, res) => {
   res.sendStatus(200);
 });
 
+// Player stats storage - global leaderboard
+const playerStats = {};
+
+// Track group chat ID for each game
+const gameOrigins = {};
+
+// Game state storage - maps gameIds to game instances
+const activeGames = {};
+
 // Log all messages to debug group chat issues
 bot.on('message', (msg) => {
   logger.info('Received message', { 
@@ -82,29 +91,31 @@ bot.on('message', (msg) => {
     const userName = msg.from.first_name || 'Player';
     const gameId = generateGameId();
     
-    // Create game and track group chat origin
+    // Create game with default stake
     const game = new DiceGame(gameId);
     game.originChatId = chatId;
+    game.baseStakeValue = 100; // Default stake ($100)
     game.addPlayer(userId.toString(), userName);
+    
+    // Store the game
     activeGames[gameId] = game;
     
-    // Announce the game in the chat
+    // Also track this game's origin for leaderboard
+    gameOrigins[gameId] = chatId;
+    
+    const appUrl = `https://kdice.onrender.com/?join=${gameId}`;
+    
+    // Announce the game in the chat with direct join link
     bot.sendMessage(chatId, 
       `${userName} created a new game!\nGame ID: ${gameId}\nWaiting for players to join...`, {
       reply_markup: {
         inline_keyboard: [[
-          { text: "Join Game", url: `https://kdice.onrender.com?join=${gameId}` }
+          { text: "👉 Join this game", url: appUrl }
         ]]
       }
     });
   }
 });
-
-// Game state storage - maps gameIds to game instances
-const activeGames = {};
-
-// Player stats storage
-const playerStats = {};
 
 // Function to update player stats
 function updatePlayerStats(winner, loser, stakes) {
@@ -114,7 +125,9 @@ function updatePlayerStats(winner, loser, stakes) {
       name: winner.name, 
       wins: 0, 
       losses: 0,
-      points: 0
+      points: 0,
+      rounds: 0,
+      dollars: 0
     };
   }
   if (!playerStats[loser.id]) {
@@ -122,15 +135,22 @@ function updatePlayerStats(winner, loser, stakes) {
       name: loser.name, 
       wins: 0, 
       losses: 0,
-      points: 0 
+      points: 0,
+      rounds: 0,
+      dollars: 0
     };
   }
   
   // Update stats
   playerStats[winner.id].wins += 1;
   playerStats[winner.id].points += stakes;
+  playerStats[winner.id].rounds += 1;
+  playerStats[winner.id].dollars += stakes * (activeGames[gameId]?.baseStakeValue || 100);
+  
   playerStats[loser.id].losses += 1;
   playerStats[loser.id].points -= stakes;
+  playerStats[loser.id].rounds += 1;
+  playerStats[loser.id].dollars -= stakes * (activeGames[gameId]?.baseStakeValue || 100);
   
   logger.info(`Stats updated`, {
     winner: winner.name,
@@ -148,9 +168,53 @@ function updatePlayerStats(winner, loser, stakes) {
   
   if (game && game.originChatId) {
     bot.sendMessage(game.originChatId, 
-      `Game update: ${winner.name} won ${stakes} points from ${loser.name}!`
+      `Game update: ${winner.name} won ${stakes} points ($${stakes * game.baseStakeValue}) from ${loser.name}!`
     );
   }
+}
+
+// Function to post leaderboard to original group chat
+function postLeaderboard(gameId) {
+  // Check if we have origin info for this game
+  const chatId = gameOrigins[gameId];
+  const game = activeGames[gameId];
+  
+  if (!chatId || !game) return;
+  
+  // Create a sorted leaderboard of just the players in this game
+  const gamePlayerIds = game.players.map(p => p.id);
+  const gameLeaderboard = gamePlayerIds
+    .map(id => playerStats[id])
+    .filter(Boolean)
+    .sort((a, b) => b.points - a.points);
+  
+  // Generate leaderboard text
+  let leaderboardText = "🏆 *GAME LEADERBOARD* 🏆\n\n";
+  
+  if (gameLeaderboard.length > 0) {
+    gameLeaderboard.forEach((player, index) => {
+      const pointsPerRound = player.rounds > 0 ? (player.points / player.rounds).toFixed(1) : '0.0';
+      const dollarText = player.dollars >= 0 ? `+$${player.dollars}` : `-$${Math.abs(player.dollars)}`;
+      
+      leaderboardText += `${index + 1}. *${player.name}*: ${player.points} points (${pointsPerRound} pts/round) ${dollarText}\n`;
+    });
+  } else {
+    leaderboardText += "No player statistics available yet.";
+  }
+  
+  // Add a global stats section
+  leaderboardText += "\n\n*Global Leaderboard:*\n";
+  const globalLeaderboard = Object.values(playerStats)
+    .sort((a, b) => b.points - a.points)
+    .slice(0, 5);
+  
+  globalLeaderboard.forEach((player, index) => {
+    const pointsPerRound = player.rounds > 0 ? (player.points / player.rounds).toFixed(1) : '0.0';
+    leaderboardText += `${index + 1}. ${player.name}: ${player.points} pts (${pointsPerRound} pts/round)\n`;
+  });
+  
+  // Send to the group
+  bot.sendMessage(chatId, leaderboardText, { parse_mode: 'Markdown' });
 }
 
 // Add endpoint to get leaderboard
@@ -368,27 +432,13 @@ io.on('connection', (socket) => {
       io.to(gameId).emit('challengeResult', { 
         challenger: game.players.find(p => p.id === playerId),
         result: result,
-        allDice: game.dices
+        allDice: game.dices,
+        baseStakeValue: game.baseStakeValue,
+        stakes: game.stakes
       });
       
-      // Start next round after a delay
-      setTimeout(() => {
-        game.startNextRound();
-        
-        // Send updated state to all players for the new round
-        for (const player of game.players) {
-          io.to(gameId).emit('roundStarted', { 
-            state: game.getGameState(player.id),
-            playerId: player.id,
-            round: game.round
-          });
-        }
-        
-        // Send general game state update
-        io.to(gameId).emit('gameUpdate', { state: game.getGameState() });
-        
-        logger.info(`New round started`, { gameId, round: game.round });
-      }, 5000); // 5 second delay to show results before next round
+      // Don't automatically start next round
+      // Players will choose to continue or end game
       
       logger.info(`Challenge`, {
         gameId,
@@ -402,6 +452,62 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: result.message });
       logger.error(`Challenge failed - ${result.message}`, { gameId, playerId });
     }
+  });
+  
+  // Start next round after player confirmation
+  socket.on('startNextRound', ({ gameId }) => {
+    const game = activeGames[gameId];
+    
+    if (!game) {
+      socket.emit('error', { message: 'Game not found' });
+      return;
+    }
+    
+    // Start next round
+    game.startNextRound();
+    
+    // Send updated state to all players for the new round
+    for (const player of game.players) {
+      io.to(gameId).emit('roundStarted', { 
+        state: game.getGameState(player.id),
+        playerId: player.id,
+        round: game.round
+      });
+    }
+    
+    // Send general game state update
+    io.to(gameId).emit('gameUpdate', { state: game.getGameState() });
+    
+    logger.info(`New round started`, { gameId, round: game.round });
+  });
+  
+  // End game and show leaderboard
+  socket.on('endGame', ({ gameId }) => {
+    const game = activeGames[gameId];
+    
+    if (!game) {
+      socket.emit('error', { message: 'Game not found' });
+      return;
+    }
+    
+    // Send end game notification to all players
+    io.to(gameId).emit('gameEnded', { 
+      state: game.getGameState(),
+      leaderboard: Object.values(playerStats)
+        .filter(player => game.players.some(p => p.id === player.id))
+        .sort((a, b) => b.points - a.points)
+    });
+    
+    // Post leaderboard to the group chat if applicable
+    postLeaderboard(gameId);
+    
+    logger.info(`Game ended`, { gameId });
+    
+    // Remove the game after a delay to allow players to see final results
+    setTimeout(() => {
+      delete activeGames[gameId];
+      delete gameOrigins[gameId];
+    }, 60000); // 1 minute delay
   });
   
   // Pi (double stakes)
@@ -473,33 +579,16 @@ io.on('connection', (socket) => {
       // Update player stats with reduced penalty
       updatePlayerStats(result.winner, result.loser, result.penalty);
       
-      // Send fold results to all players
+      // Send fold results to all players with current stakes info
       io.to(gameId).emit('foldResult', {
         loser: result.loser,
         winner: result.winner,
         penalty: result.penalty,
-        state: game.getGameState()
+        state: game.getGameState(),
+        baseStakeValue: game.baseStakeValue
       });
       
-      // Start next round after a delay
-      setTimeout(() => {
-        game.startNextRound();
-        
-        // Send updated state to all players for the new round
-        for (const player of game.players) {
-          io.to(gameId).emit('roundStarted', { 
-            state: game.getGameState(player.id),
-            playerId: player.id,
-            round: game.round
-          });
-        }
-        
-        // Send general game state update
-        io.to(gameId).emit('gameUpdate', { state: game.getGameState() });
-        
-        logger.info(`New round started after fold`, { gameId, round: game.round });
-      }, 3000); // 3 second delay before next round
-      
+      // Don't automatically start next round
       logger.info(`Fold`, {
         gameId,
         playerId,
@@ -542,28 +631,12 @@ io.on('connection', (socket) => {
       io.to(gameId).emit('challengeResult', { 
         challenger: game.players.find(p => p.id === playerId),
         result: result,
-        allDice: game.dices
+        allDice: game.dices,
+        baseStakeValue: game.baseStakeValue,
+        stakes: game.stakes
       });
       
-      // Start next round after a delay
-      setTimeout(() => {
-        game.startNextRound();
-        
-        // Send updated state to all players for the new round
-        for (const player of game.players) {
-          io.to(gameId).emit('roundStarted', { 
-            state: game.getGameState(player.id),
-            playerId: player.id,
-            round: game.round
-          });
-        }
-        
-        // Send general game state update
-        io.to(gameId).emit('gameUpdate', { state: game.getGameState() });
-        
-        logger.info(`New round started after open`, { gameId, round: game.round });
-      }, 5000); // 5 second delay to show results before next round
-      
+      // Don't automatically start next round
       logger.info(`Open`, {
         gameId,
         challenger: playerId,
@@ -592,6 +665,7 @@ io.on('connection', (socket) => {
       // If game is empty, remove it
       if (game.players.length === 0) {
         delete activeGames[gameId];
+        delete gameOrigins[gameId];
         logger.info(`Game removed - all players left`, { gameId });
       } else {
         // Notify other players
@@ -615,10 +689,10 @@ io.on('connection', (socket) => {
 });
 
 // Parse game ID from URL parameter (for direct sharing)
-app.use((req, res, next) => {
+app.get('/', (req, res, next) => {
   if (req.query.join && activeGames[req.query.join]) {
-    // Redirect to main page with a cookie to auto-join this game
-    res.cookie('joinGame', req.query.join, { maxAge: 60000 }); // 1 minute cookie
+    // Set a cookie to auto-join the game
+    res.cookie('joinGame', req.query.join, { maxAge: 60000 }); // 1 minute
   }
   next();
 });

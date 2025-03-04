@@ -3,6 +3,9 @@ const tgApp = window.Telegram.WebApp;
 tgApp.expand();
 tgApp.ready();
 
+// Connect to Socket.io server
+const socket = io();
+
 // Better extraction of user data
 let userData = {
   id: Math.random().toString(36).substring(2, 10),
@@ -38,7 +41,8 @@ let game = {
   stakes: 1,     // Current stake multiplier
   baseStakeValue: 100, // Base stake value ($ per point)
   playerScores: {}, // Track scores for each player
-  selectedStake: 100 // Default stake value
+  selectedStake: 100, // Default stake value
+  roundHistory: [] // Track round results
 };
 
 // DOM Elements
@@ -46,7 +50,8 @@ const screens = {
   welcome: document.getElementById('welcomeScreen'),
   lobby: document.getElementById('lobbyScreen'),
   game: document.getElementById('gameScreen'),
-  challengeResult: document.getElementById('challengeResultScreen')
+  challengeResult: document.getElementById('challengeResultScreen'),
+  roundSummary: document.getElementById('roundSummaryScreen') // New screen
 };
 
 // Check for game join parameter
@@ -61,6 +66,25 @@ function checkForGameJoin() {
       document.getElementById('joinGameBtn').click();
     }, 500);
   }
+
+  // Also check cookies
+  const joinGameCookie = getCookie('joinGame');
+  if (joinGameCookie) {
+    document.getElementById('gameIdInput').value = joinGameCookie;
+    // Auto join after a short delay
+    setTimeout(() => {
+      document.getElementById('joinGameBtn').click();
+      // Clear the cookie after joining
+      document.cookie = "joinGame=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    }, 500);
+  }
+}
+
+// Helper function to get a cookie by name
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
 }
 
 // Helper function to switch screens
@@ -600,6 +624,20 @@ document.getElementById('startGameBtn').addEventListener('click', () => {
   });
 });
 
+// Handle "Next Round" button
+document.getElementById('nextRoundBtn').addEventListener('click', () => {
+  socket.emit('startNextRound', {
+    gameId: game.gameId
+  });
+});
+
+// Handle "End Game" button
+document.getElementById('endGameBtn').addEventListener('click', () => {
+  socket.emit('endGame', {
+    gameId: game.gameId
+  });
+});
+
 // Leave lobby
 document.getElementById('leaveLobbyBtn').addEventListener('click', () => {
   socket.emit('leaveGame', {
@@ -843,8 +881,8 @@ socket.on('yourTurn', ({ state, playerId }) => {
   }
 });
 
-socket.on('challengeResult', ({ challenger, result, allDice }) => {
-  // Show challenge result screen
+socket.on('challengeResult', ({ challenger, result, allDice, baseStakeValue, stakes }) => {
+  // Show the round summary instead of challenge results
   const winnerName = result.winner.name;
   const loserName = result.loser.name;
   const actualCount = result.actualCount;
@@ -856,16 +894,25 @@ socket.on('challengeResult', ({ challenger, result, allDice }) => {
   // Format bid for display
   const bidDisplay = formatBidForDisplay(bidCount, bidValue, isTsi, isFly);
   
-  // Set result text
-  document.getElementById('challengeResultText').innerHTML = `
+  // Calculate the points won/lost
+  const points = stakes || 1;
+  const dollars = points * (baseStakeValue || 100);
+  
+  // Determine if I won or lost
+  const isWinner = result.winner.id === game.playerId;
+  
+  // Set round summary text
+  document.getElementById('roundSummaryText').innerHTML = `
+    <h3>Round ${game.round} Results</h3>
     <p><strong>${challenger.name}</strong> challenged!</p>
     <p>Bid: ${bidDisplay}</p>
     <p>Actual count: ${actualCount} ${bidValue}'s</p>
-    <p><strong>${winnerName}</strong> wins!</p>
+    <p><strong>${winnerName}</strong> wins, <strong>${loserName}</strong> loses.</p>
+    <p>Points: ${isWinner ? '+' : '-'}${points} (${isWinner ? '+' : '-'}$${dollars})</p>
   `;
   
   // Show all dice
-  const diceReveal = document.getElementById('diceReveal');
+  const diceReveal = document.getElementById('summaryDiceReveal');
   diceReveal.innerHTML = '';
   
   for (const playerId in allDice) {
@@ -894,8 +941,33 @@ socket.on('challengeResult', ({ challenger, result, allDice }) => {
     diceReveal.appendChild(playerDiceElem);
   }
   
-  // Show the challenge result screen
-  showScreen('challengeResult');
+  // Show the round summary screen
+  showScreen('roundSummary');
+});
+
+socket.on('foldResult', ({ loser, winner, penalty, state, baseStakeValue }) => {
+  // Calculate dollars
+  const dollars = penalty * (baseStakeValue || 100);
+  
+  // Determine if I won or lost
+  const isWinner = winner.id === game.playerId;
+  
+  // Set round summary text
+  document.getElementById('roundSummaryText').innerHTML = `
+    <h3>Round ${game.round} Results</h3>
+    <p><strong>${loser.name}</strong> folded!</p>
+    <p><strong>${winner.name}</strong> wins ${penalty} points ($${dollars})</p>
+    <p>Points: ${isWinner ? '+' : '-'}${penalty} (${isWinner ? '+' : '-'}$${dollars})</p>
+  `;
+  
+  // No dice to show for fold
+  document.getElementById('summaryDiceReveal').innerHTML = '';
+  
+  // Update game state
+  updateGameState(state);
+  
+  // Show the round summary screen
+  showScreen('roundSummary');
 });
 
 socket.on('roundStarted', ({ state, playerId, round }) => {
@@ -934,6 +1006,49 @@ socket.on('roundStarted', ({ state, playerId, round }) => {
   }
 });
 
+socket.on('gameEnded', ({ state, leaderboard }) => {
+  // Display leaderboard
+  const leaderboardElem = document.getElementById('leaderboardDisplay');
+  leaderboardElem.innerHTML = '<h3>Game Leaderboard</h3>';
+  
+  const leaderTable = document.createElement('table');
+  leaderTable.className = 'leaderboard-table';
+  
+  // Create table header
+  const header = document.createElement('tr');
+  header.innerHTML = `
+    <th>Player</th>
+    <th>Points</th>
+    <th>Money</th>
+  `;
+  leaderTable.appendChild(header);
+  
+  // Add each player
+  leaderboard.forEach(player => {
+    const row = document.createElement('tr');
+    const dollars = player.points * (state.baseStakeValue || 100);
+    const dollarsDisplay = dollars >= 0 ? `+$${dollars}` : `-$${Math.abs(dollars)}`;
+    
+    row.innerHTML = `
+      <td>${player.name}${player.id === game.playerId ? ' (You)' : ''}</td>
+      <td>${player.points}</td>
+      <td>${dollarsDisplay}</td>
+    `;
+    leaderTable.appendChild(row);
+  });
+  
+  leaderboardElem.appendChild(leaderTable);
+  
+  // Show goodbye message
+  document.getElementById('gameEndText').innerHTML = `
+    <p>The game has ended. Thanks for playing!</p>
+    <p>A full leaderboard has been posted to the group chat.</p>
+  `;
+  
+  // Show game end screen
+  showScreen('gameEnd');
+});
+
 socket.on('playerLeft', ({ playerId, state }) => {
   updateGameState(state, false);
   
@@ -962,6 +1077,8 @@ function updateGameState(state, updateDice = true) {
   game.piCount = state.piCount || game.piCount;
   game.baseStakeValue = state.baseStakeValue || game.baseStakeValue;
   game.playerScores = state.playerScores || {};
+  game.round = state.round || game.round;
+  game.roundHistory = state.roundHistory || [];
   
   // Check if it's my turn
   if (game.currentPlayerIndex !== null) {
@@ -1007,8 +1124,10 @@ function updateGameUI() {
     
     const playerScore = game.playerScores[player.id] || 0;
     const scoreText = playerScore >= 0 ? `+${playerScore}p` : `${playerScore}p`;
+    const dollars = playerScore * game.baseStakeValue;
+    const dollarText = dollars >= 0 ? `+$${dollars}` : `-$${Math.abs(dollars)}`;
     
-    playerItem.textContent = `${player.name} ${scoreText} ${player.id === game.playerId ? '(You)' : ''}`;
+    playerItem.textContent = `${player.name} ${scoreText} ${dollarText} ${player.id === game.playerId ? '(You)' : ''}`;
     playerList.appendChild(playerItem);
   });
   

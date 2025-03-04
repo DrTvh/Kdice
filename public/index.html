@@ -80,54 +80,54 @@
     }
 
     /* Ensure consistent dice styling throughout the game */
-/* This overrides any conflicting styles */
+    /* This overrides any conflicting styles */
 
-/* Reset dice styling */
-.dice {
-  width: 48px; /* Increased from 42px to give more room */
-  height: 48px; /* Increased from 42px to give more room */
-  border-radius: 8px;
-  background-color: white;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-  position: relative;
-  display: block;
-  padding: 0;
-  margin: 0;
-}
+    /* Reset dice styling */
+    .dice {
+      width: 48px; /* Increased from 42px to give more room */
+      height: 48px; /* Increased from 42px to give more room */
+      border-radius: 8px;
+      background-color: white;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      position: relative;
+      display: block;
+      padding: 0;
+      margin: 0;
+    }
 
-.dice.joker {
-  background-color: rgba(255, 215, 0, 0.3);
-}
+    .dice.joker {
+      background-color: rgba(255, 215, 0, 0.3);
+    }
 
-.dice-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: var(--tg-theme-text-color);
-  position: absolute;
-  display: block;
-  margin: 0;
-}
+    .dice-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--tg-theme-text-color);
+      position: absolute;
+      display: block;
+      margin: 0;
+    }
 
-/* Ensure dice value buttons have appropriate styling */
-.dice-value-button .dice {
-  width: 24px;
-  height: 24px;
-}
+    /* Ensure dice value buttons have appropriate styling */
+    .dice-value-button .dice {
+      width: 24px;
+      height: 24px;
+    }
 
-.dice-value-button .dice-dot {
-  width: 5px;
-  height: 5px;
-}
+    .dice-value-button .dice-dot {
+      width: 5px;
+      height: 5px;
+    }
 
-/* Keep the compact dice container */
-.card.dice-card {
-  padding-top: 4px;
-  padding-bottom: 6px;
-  padding-left: 6px;
-  padding-right: 6px;
-  margin-bottom: 8px;
-}
+    /* Keep the compact dice container */
+    .card.dice-card {
+      padding-top: 4px;
+      padding-bottom: 6px;
+      padding-left: 6px;
+      padding-right: 6px;
+      margin-bottom: 8px;
+    }
 
     .player-list {
       margin-top: 20px;
@@ -356,241 +356,269 @@
     }
 
     /* Updated dice sizes - 30% smaller */
-.dice {
-  width: 42px;  /* Reduced from 60px */
-  height: 42px; /* Reduced from 60px */
-  border-radius: 8px;
-  background-color: white;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-  display: flex;
-  justify-content: space-around;
-  align-items: center;
-  font-size: 18px; /* Reduced from 24px */
-  font-weight: bold;
-  flex-wrap: wrap;
-  padding: 4px;
-  position: relative;
-}
+    .dice {
+      width: 42px;  /* Reduced from 60px */
+      height: 42px; /* Reduced from 60px */
+      border-radius: 8px;
+      background-color: white;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      font-size: 18px; /* Reduced from 24px */
+      font-weight: bold;
+      flex-wrap: wrap;
+      padding: 4px;
+      position: relative;
+    }
 
-.dice-dot {
-  width: 8px; /* Reduced from 12px */
-  height: 8px; /* Reduced from 12px */
-  border-radius: 50%;
-  background-color: var(--tg-theme-text-color);
-  display: inline-block;
-}
+    .dice-dot {
+      width: 8px; /* Reduced from 12px */
+      height: 8px; /* Reduced from 12px */
+      border-radius: 50%;
+      background-color: var(--tg-theme-text-color);
+      display: inline-block;
+    }
 
-/* Make dice container more compact */
-.dice-container {
-  gap: 8px; /* Reduced from 10px */
-  margin: 10px 0; /* Reduced from 20px 0 */
-}
+    /* Make dice container more compact */
+    .dice-container {
+      gap: 8px; /* Reduced from 10px */
+      margin: 10px 0; /* Reduced from 20px 0 */
+    }
 
-/* Smaller game status text */
-.game-status {
-  font-size: 14px; /* Reduced from default */
-  margin: 8px 0; /* Reduced from 15px 0 */
-  font-weight: normal; /* Changed from bold */
-}
+    /* Smaller game status text */
+    .game-status {
+      font-size: 14px; /* Reduced from default */
+      margin: 8px 0; /* Reduced from 15px 0 */
+      font-weight: normal; /* Changed from bold */
+    }
 
-/* Smaller game info card */
-.card h3 {
-  font-size: 16px;
-  margin-bottom: 10px;
-}
+    /* Smaller game info card */
+    .card h3 {
+      font-size: 16px;
+      margin-bottom: 10px;
+    }
 
-/* More compact current bid and stakes display */
-.current-bid-display, .stakes-display {
-  padding: 6px; /* Reduced from 10px */
-  margin-bottom: 8px; /* Reduced from 15px */
-  font-size: 14px; /* Smaller text */
-}
+    /* More compact current bid and stakes display */
+    .current-bid-display, .stakes-display {
+      padding: 6px; /* Reduced from 10px */
+      margin-bottom: 8px; /* Reduced from 15px */
+      font-size: 14px; /* Smaller text */
+    }
 
-/* More compact card padding */
-.card {
-  padding: 10px; /* Reduced from 15px */
-  margin-bottom: 10px; /* Reduced from 15px */
-}
+    /* More compact card padding */
+    .card {
+      padding: 10px; /* Reduced from 15px */
+      margin-bottom: 10px; /* Reduced from 15px */
+    }
 
-/* Smaller headings */
-h2 {
-  font-size: 20px;
-  margin-bottom: 10px;
-}
+    /* Smaller headings */
+    h2 {
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
 
-/* More compact bid controls */
-.bid-selector {
-  gap: 8px; /* Reduced from 15px */
-  margin-bottom: 10px; /* Reduced from 15px */
-}
+    /* More compact bid controls */
+    .bid-selector {
+      gap: 8px; /* Reduced from 15px */
+      margin-bottom: 10px; /* Reduced from 15px */
+    }
 
-.bid-label {
-  margin-bottom: 3px; /* Reduced from 5px */
-  font-size: 14px;
-}
+    .bid-label {
+      margin-bottom: 3px; /* Reduced from 5px */
+      font-size: 14px;
+    }
 
-/* More compact action buttons */
-.action-buttons {
-  gap: 8px; /* Reduced from 10px */
-  margin-top: 10px; /* Reduced from 15px */
-}
+    /* More compact action buttons */
+    .action-buttons {
+      gap: 8px; /* Reduced from 10px */
+      margin-top: 10px; /* Reduced from 15px */
+    }
 
-/* Smaller buttons for bid values */
-.number-button {
-  width: 36px; /* Reduced from 40px */
-  height: 36px; /* Reduced from 40px */
-  font-size: 16px; /* Reduced from 18px */
-}
+    /* Smaller buttons for bid values */
+    .number-button {
+      width: 36px; /* Reduced from 40px */
+      height: 36px; /* Reduced from 40px */
+      font-size: 16px; /* Reduced from 18px */
+    }
 
-/* Make dice value display smaller */
-.dice-value-button .dice {
-  width: 24px; /* Reduced from 30px */
-  height: 24px; /* Reduced from 30px */
-}
+    /* Make dice value display smaller */
+    .dice-value-button .dice {
+      width: 24px; /* Reduced from 30px */
+      height: 24px; /* Reduced from 30px */
+    }
 
-.dice-value-button .dice-dot {
-  width: 5px; /* Reduced from 6px */
-  height: 5px; /* Reduced from 6px */
-}
+    .dice-value-button .dice-dot {
+      width: 5px; /* Reduced from 6px */
+      height: 5px; /* Reduced from 6px */
+    }
 
-/* Wider container for landscape mode */
-.container {
-  max-width: 800px;
-  margin: 0 auto;
-}
+    /* Wider container for landscape mode */
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
 
-/* Two-column layout for wider screens */
-@media (min-width: 768px) {
-  .game-layout {
-    display: flex;
-    gap: 15px;
-  }
-  
-  .game-left-column {
-    flex: 2;
-  }
-  
-  .game-right-column {
-    flex: 1;
-  }
-  
-}
+    /* Two-column layout for wider screens */
+    @media (min-width: 768px) {
+      .game-layout {
+        display: flex;
+        gap: 15px;
+      }
+      
+      .game-left-column {
+        flex: 2;
+      }
+      
+      .game-right-column {
+        flex: 1;
+      }
+    }
 
-.round-indicator {
-  font-size: 13px;
-  color: #4CAF50; /* Green color */
-  text-align: left;
-  margin-bottom: 5px;
-  font-weight: bold;
-  position: relative;
-  top: -5px;
-  width: 100%;
-}
+    .round-indicator {
+      font-size: 13px;
+      color: #4CAF50; /* Green color */
+      text-align: left;
+      margin-bottom: 5px;
+      font-weight: bold;
+      position: relative;
+      top: -5px;
+      width: 100%;
+    }
 
-#roundNumber {
-  display: inline-block;
-  background-color: #4CAF50; /* Green background */
-  color: white;
-  border-radius: 10px;
-  padding: 2px 6px;
-  font-size: 12px;
-  min-width: 16px;
-  text-align: center;
-}
+    #roundNumber {
+      display: inline-block;
+      background-color: #4CAF50; /* Green background */
+      color: white;
+      border-radius: 10px;
+      padding: 2px 6px;
+      font-size: 12px;
+      min-width: 16px;
+      text-align: center;
+    }
 
-/* Compact stakes display */
-.compact-card {
-  padding: 6px;
-  margin-bottom: 8px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
+    /* Compact stakes display */
+    .compact-card {
+      padding: 6px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
 
-.stakes-display {
-  display: inline-block;
-  text-align: center;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 12px; /* 40% smaller than original */
-  background-color: var(--tg-theme-secondary-bg-color);
-  font-weight: normal;
-  width: auto; /* Only as wide as content needs */
-  max-width: fit-content; /* Ensure it doesn't expand unnecessarily */
-}
+    .stakes-display {
+      display: inline-block;
+      text-align: center;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 12px; /* 40% smaller than original */
+      background-color: var(--tg-theme-secondary-bg-color);
+      font-weight: normal;
+      width: auto; /* Only as wide as content needs */
+      max-width: fit-content; /* Ensure it doesn't expand unnecessarily */
+    }
 
-.current-bid-display {
-  text-align: center;
-  padding: 3px 8px;
-  border-radius: 6px;
-  margin-right: 10px;
-  font-size: 12px;
-  background-color: var(--tg-theme-secondary-bg-color);
-  font-weight: normal;
-  width: auto;
-  max-width: fit-content;
-}
+    .current-bid-display {
+      text-align: center;
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-right: 10px;
+      font-size: 12px;
+      background-color: var(--tg-theme-secondary-bg-color);
+      font-weight: normal;
+      width: auto;
+      max-width: fit-content;
+    }
 
-/* Compact dice container */
-.card.dice-card {
-  padding-top: 4px;
-  padding-bottom: 6px;
-  padding-left: 6px;
-  padding-right: 6px;
-  margin-bottom: 8px;
-}
+    /* Compact dice container */
+    .card.dice-card {
+      padding-top: 4px;
+      padding-bottom: 6px;
+      padding-left: 6px;
+      padding-right: 6px;
+      margin-bottom: 8px;
+    }
 
-.card.dice-card h3 {
-  font-size: 14px;
-  margin-top: 2px;
-  margin-bottom: 4px;
-}
+    .card.dice-card h3 {
+      font-size: 14px;
+      margin-top: 2px;
+      margin-bottom: 4px;
+    }
 
-/* Move dice container closer to heading */
-.dice-container {
-  gap: 6px; /* Reduced from 8px */
-  margin: 4px 0; /* Reduced from 10px 0 */
-}
+    /* Move dice container closer to heading */
+    .dice-container {
+      gap: 6px; /* Reduced from 8px */
+      margin: 4px 0; /* Reduced from 10px 0 */
+    }
 
-/* Optional: If you want to position the round indicator closer to dice */
-.round-indicator {
-  margin-bottom: 2px;
-  margin-top: 0;
-}
+    /* Optional: If you want to position the round indicator closer to dice */
+    .round-indicator {
+      margin-bottom: 2px;
+      margin-top: 0;
+    }
 
-.dice:not(.dice-value-button .dice) .dice-dot[style*="top: 25%"] {
-  top: 20% !important;
-}
+    .dice:not(.dice-value-button .dice) .dice-dot[style*="top: 25%"] {
+      top: 20% !important;
+    }
 
-.dice:not(.dice-value-button .dice) .dice-dot[style*="bottom: 25%"] {
-  bottom: 20% !important;
-}
+    .dice:not(.dice-value-button .dice) .dice-dot[style*="bottom: 25%"] {
+      bottom: 20% !important;
+    }
 
-.dice:not(.dice-value-button .dice) .dice-dot[style*="left: 25%"] {
-  left: 20% !important;
-}
+    .dice:not(.dice-value-button .dice) .dice-dot[style*="left: 25%"] {
+      left: 20% !important;
+    }
 
-.dice:not(.dice-value-button .dice) .dice-dot[style*="right: 25%"] {
-  right: 20% !important;
-}
+    .dice:not(.dice-value-button .dice) .dice-dot[style*="right: 25%"] {
+      right: 20% !important;
+    }
 
-/* New stake options styling */
-.stake-options {
-  margin: 15px 0;
-}
-.stake-button {
-  background-color: var(--tg-theme-secondary-bg-color);
-  color: var(--tg-theme-text-color);
-  border: none;
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin: 4px;
-  cursor: pointer;
-}
-.stake-button.selected {
-  background-color: var(--tg-theme-button-color);
-  color: var(--tg-theme-button-text-color);
-}
+    /* Stake options styling */
+    .stake-options {
+      margin: 15px 0;
+    }
+    
+    .stake-button {
+      background-color: var(--tg-theme-secondary-bg-color);
+      color: var(--tg-theme-text-color);
+      border: none;
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin: 4px;
+      cursor: pointer;
+    }
+    
+    .stake-button.selected {
+      background-color: var(--tg-theme-button-color);
+      color: var(--tg-theme-button-text-color);
+    }
+
+    /* Round summary screen */
+    .summary-content {
+      background-color: var(--tg-theme-secondary-bg-color);
+      padding: 15px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+
+    /* Leaderboard styles */
+    .leaderboard-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+
+    .leaderboard-table th,
+    .leaderboard-table td {
+      padding: 8px;
+      text-align: left;
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+    }
+
+    .leaderboard-table th {
+      font-weight: bold;
+      background-color: rgba(0,0,0,0.05);
+    }
   </style>
 </head>
 <body>
@@ -656,78 +684,76 @@ h2 {
     </div>
 
     <!-- Game Screen -->
-<div id="gameScreen" class="screen">
-  <!-- Removed the h2 with Round 1 -->
-  
-  <div class="game-layout">
-    <div class="game-left-column">
-        <div class="card dice-card">
-          <div class="round-indicator" id="roundIndicator">Round: <span id="roundNumber">1</span></div>
-          <h3>Your Dice</h3>
-          <div id="diceContainer" class="dice-container"></div>
-        </div>
-      
-      <div class="game-status" id="gameStatus">Waiting for your turn...</div>
-      
-      <div class="card compact-card">
-        <div id="currentBidDisplay" class="current-bid-display" style="display: none;">
-          Current Bid: <span id="currentBidText">None</span>
-        </div>
-        <div id="stakesDisplay" class="stakes-display">
-          Stakes: 1 point ($0)
-        </div>
-      </div>
-      
-      <div id="bidControls" class="bid-controls">
-        <div class="bid-selector">
-          <div class="bid-label">Dice Count:</div>
-          <div class="bid-buttons" id="countButtons">
-            <!-- Count buttons will be generated by JavaScript -->
+    <div id="gameScreen" class="screen">
+      <div class="game-layout">
+        <div class="game-left-column">
+          <div class="card dice-card">
+            <div class="round-indicator" id="roundIndicator">Round: <span id="roundNumber">1</span></div>
+            <h3>Your Dice</h3>
+            <div id="diceContainer" class="dice-container"></div>
+          </div>
+        
+          <div class="game-status" id="gameStatus">Waiting for your turn...</div>
+        
+          <div class="card compact-card">
+            <div id="currentBidDisplay" class="current-bid-display" style="display: none;">
+              Current Bid: <span id="currentBidText">None</span>
+            </div>
+            <div id="stakesDisplay" class="stakes-display">
+              Stakes: 1 point ($0)
+            </div>
+          </div>
+        
+          <div id="bidControls" class="bid-controls">
+            <div class="bid-selector">
+              <div class="bid-label">Dice Count:</div>
+              <div class="bid-buttons" id="countButtons">
+                <!-- Count buttons will be generated by JavaScript -->
+              </div>
+            </div>
+          
+            <div class="bid-selector">
+              <div class="bid-label">Dice Value:</div>
+              <div class="bid-buttons" id="valueButtons">
+                <!-- Value buttons will be generated by JavaScript -->
+              </div>
+            </div>
+          
+            <div class="bid-buttons bid-type-buttons" style="margin-top: 8px;">
+              <button id="tsiBtn" class="bid-type-button">Tsi (-)</button>
+              <button id="flyBtn" class="bid-type-button">Fly (+)</button>
+            </div>
+          
+            <div class="action-buttons">
+              <button id="bidBtn" class="button">Place Bid</button>
+              <button id="challengeBtn" class="button secondary">Call Liar!</button>
+            </div>
+          
+            <div class="action-buttons stake-actions">
+              <button id="piBtn" class="button secondary">Pi (x2)</button>
+              <button id="foldBtn" class="button secondary">Fold</button>
+              <button id="openBtn" class="button secondary">Open</button>
+            </div>
           </div>
         </div>
-        
-        <div class="bid-selector">
-          <div class="bid-label">Dice Value:</div>
-          <div class="bid-buttons" id="valueButtons">
-            <!-- Value buttons will be generated by JavaScript -->
+      
+        <div class="game-right-column">
+          <div class="card">
+            <h3>Players</h3>
+            <div id="playerList" class="player-list"></div>
           </div>
-        </div>
         
-        <div class="bid-buttons bid-type-buttons" style="margin-top: 8px;">
-          <button id="tsiBtn" class="bid-type-button">Tsi (-)</button>
-          <button id="flyBtn" class="bid-type-button">Fly (+)</button>
-        </div>
+          <div class="card">
+            <h3>Bid History</h3>
+            <div id="bidHistory" class="history"></div>
+          </div>
         
-        <div class="action-buttons">
-          <button id="bidBtn" class="button">Place Bid</button>
-          <button id="challengeBtn" class="button secondary">Call Liar!</button>
-        </div>
-        
-        <div class="action-buttons stake-actions">
-          <button id="piBtn" class="button secondary">Pi (x2)</button>
-          <button id="foldBtn" class="button secondary">Fold</button>
-          <button id="openBtn" class="button secondary">Open</button>
+          <button id="leaveGameBtn" class="button secondary">Leave Game</button>
         </div>
       </div>
     </div>
-    
-    <div class="game-right-column">
-      <div class="card">
-        <h3>Players</h3>
-        <div id="playerList" class="player-list"></div>
-      </div>
-      
-      <div class="card">
-        <h3>Bid History</h3>
-        <div id="bidHistory" class="history"></div>
-      </div>
-      
-      <button id="leaveGameBtn" class="button secondary">Leave Game</button>
-    </div>
-  </div>
-</div>
 
-    <!-- Challenge Result Screen -->
+    <!-- Challenge Result Screen (Old - kept for compatibility) -->
     <div id="challengeResultScreen" class="screen">
       <h2>Challenge Result</h2>
       
@@ -736,6 +762,31 @@ h2 {
       <div class="dice-reveal" id="diceReveal"></div>
       
       <p id="nextRoundText" class="instructions">Next round starting in a few seconds...</p>
+    </div>
+
+    <!-- Round Summary Screen (New) -->
+    <div id="roundSummaryScreen" class="screen">
+      <h2>Round Summary</h2>
+      
+      <div class="summary-content" id="roundSummaryText"></div>
+      
+      <div class="dice-reveal" id="summaryDiceReveal"></div>
+      
+      <div class="action-buttons">
+        <button id="nextRoundBtn" class="button">Next Round</button>
+        <button id="endGameBtn" class="button secondary">End Game</button>
+      </div>
+    </div>
+
+    <!-- Game End Screen -->
+    <div id="gameEndScreen" class="screen">
+      <h2>Game Ended</h2>
+      
+      <div class="card" id="gameEndText"></div>
+      
+      <div class="card" id="leaderboardDisplay"></div>
+      
+      <button id="returnHomeBtn" class="button">Return to Home</button>
     </div>
   </div>
 

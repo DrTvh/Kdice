@@ -14,6 +14,7 @@ class DiceGame {
     this.baseStakeValue = 100; // Default stake value ($ per point)
     this.playerScores = {}; // Track points for this game
     this.originChatId = null; // Track if game came from a group chat
+    this.roundHistory = []; // Track round results
   }
 
   updatePlayerScore(winnerId, loserId, points) {
@@ -26,6 +27,15 @@ class DiceGame {
     
     this.playerScores[winnerId] += points;
     this.playerScores[loserId] -= points;
+    
+    // Add to round history
+    this.roundHistory.push({
+      round: this.round,
+      winner: winnerId,
+      loser: loserId,
+      points: points,
+      dollars: points * this.baseStakeValue
+    });
   }
 
   addPlayer(playerId, playerName) {
@@ -305,7 +315,8 @@ class DiceGame {
       stakes: this.stakes,
       piCount: this.piCount,
       baseStakeValue: this.baseStakeValue,
-      playerScores: this.playerScores
+      playerScores: this.playerScores,
+      roundHistory: this.roundHistory
     };
     
     // If a specific player is requesting their state, include their dice
