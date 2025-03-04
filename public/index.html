@@ -130,14 +130,15 @@
     }
 
     .player-list {
-      margin-top: 20px;
+      margin-top: 10px;
     }
 
     .player-item {
-      padding: 10px;
+      padding: 8px;
       border-radius: 8px;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       background-color: var(--tg-theme-secondary-bg-color);
+      font-size: 14px;
     }
 
     .current-player {
@@ -208,7 +209,7 @@
     }
 
     .history {
-      margin-top: 20px;
+      margin-top: 5px;
       max-height: 150px;
       overflow-y: auto;
       border-radius: 8px;
@@ -619,6 +620,29 @@
       font-weight: bold;
       background-color: rgba(0,0,0,0.05);
     }
+
+    /* Make player list more compact */
+    .card.player-card {
+      padding: 8px;
+      margin-bottom: 8px;
+    }
+
+    .card.player-card h3 {
+      margin-top: 0;
+      margin-bottom: 5px;
+    }
+    
+    /* Make bid history more visible */
+    .card.history-card {
+      margin-bottom: 8px;
+    }
+    
+    /* Wait message for round summary */
+    .waiting-message {
+      font-style: italic;
+      color: var(--tg-theme-hint-color);
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -704,7 +728,7 @@
             </div>
           </div>
         
-          <div id="bidControls" class="bid-controls">
+          <div id="bidControls" class="bid-controls" style="display: none;">
             <div class="bid-selector">
               <div class="bid-label">Dice Count:</div>
               <div class="bid-buttons" id="countButtons">
@@ -721,7 +745,7 @@
           
             <div class="bid-buttons bid-type-buttons" style="margin-top: 8px;">
               <button id="tsiBtn" class="bid-type-button">Tsi (-)</button>
-              <button id="flyBtn" class="bid-type-button">Fly (+)</button>
+              <button id="flyBtn" class="bid-type-button" style="display: none;">Fly (+)</button>
             </div>
           
             <div class="action-buttons">
@@ -730,7 +754,7 @@
             </div>
           
             <div class="action-buttons stake-actions">
-              <button id="piBtn" class="button secondary">Pi (x2)</button>
+              <button id="piBtn" class="button secondary">Pi (2x)</button>
               <button id="foldBtn" class="button secondary">Fold</button>
               <button id="openBtn" class="button secondary">Open</button>
             </div>
@@ -738,14 +762,16 @@
         </div>
       
         <div class="game-right-column">
-          <div class="card">
-            <h3>Players</h3>
-            <div id="playerList" class="player-list"></div>
-          </div>
-        
-          <div class="card">
+          <!-- Bid History now on top -->
+          <div class="card history-card">
             <h3>Bid History</h3>
             <div id="bidHistory" class="history"></div>
+          </div>
+          
+          <!-- Players below bid history, more compact -->
+          <div class="card player-card">
+            <h3>Players</h3>
+            <div id="playerList" class="player-list"></div>
           </div>
         
           <button id="leaveGameBtn" class="button secondary">Leave Game</button>

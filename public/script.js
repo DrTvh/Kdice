@@ -6,32 +6,32 @@ tgApp.ready();
 // Connect to Socket.io server
 const socket = io();
 
-// Better extraction of user data
+// Extract user data, prioritizing Telegram WebApp data
 let userData = {
   id: 'player_' + Math.random().toString(36).substring(2, 10),
   name: 'Player'
 };
 
-// Try to get URL parameters first (from group chat join)
-const urlParams = new URLSearchParams(window.location.search);
-const urlUserId = urlParams.get('userId');
-const urlUserName = urlParams.get('userName');
-
-if (urlUserId && urlUserName) {
-  userData = {
-    id: 'tg_' + urlUserId,
-    name: urlUserName
-  };
-  console.log('URL user data loaded:', userData);
-} 
-// If no URL params, try Telegram WebApp data
-else if (tgApp.initDataUnsafe && tgApp.initDataUnsafe.user) {
+// Prefer Telegram WebApp data if available
+if (tgApp.initDataUnsafe && tgApp.initDataUnsafe.user) {
   const user = tgApp.initDataUnsafe.user;
   userData = {
-    id: 'tg_' + user.id.toString(), 
+    id: 'tg_' + user.id.toString(),
     name: user.first_name || (user.username ? '@' + user.username : 'Player')
   };
   console.log('Telegram user data loaded:', userData);
+} else {
+  // Fallback to URL parameters if outside Telegram (unlikely)
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlUserId = urlParams.get('userId');
+  const urlUserName = urlParams.get('userName');
+  if (urlUserId && urlUserName) {
+    userData = {
+      id: 'tg_' + urlUserId,
+      name: urlUserName
+    };
+    console.log('URL user data loaded:', userData);
+  }
 }
 
 // Game state variables
@@ -54,7 +54,8 @@ let game = {
   baseStakeValue: 100, // Base stake value ($ per point)
   playerScores: {}, // Track scores for each player
   selectedStake: 100, // Default stake value
-  roundHistory: [] // Track round results
+  roundHistory: [], // Track round results
+  players: []      // Players in the game
 };
 
 // DOM Elements
@@ -63,7 +64,7 @@ const screens = {
   lobby: document.getElementById('lobbyScreen'),
   game: document.getElementById('gameScreen'),
   challengeResult: document.getElementById('challengeResultScreen'),
-  roundSummary: document.getElementById('roundSummaryScreen') // New screen
+  roundSummary: document.getElementById('roundSummaryScreen')
 };
 
 // Check for game join parameter
@@ -307,7 +308,6 @@ function initializeBidButtons() {
   countButtons.innerHTML = '';
   valueButtons.innerHTML = '';
   
-  // Create count buttons (1 to max based on players)
   // Calculate max count based on number of players (5 dice per player, max 6 players)
   game.maxCount = Math.min(game.players.length, 6) * 5;
   
@@ -498,8 +498,7 @@ document.querySelectorAll('.stake-button').forEach(button => {
 // Add event listeners for tsi/fly buttons
 document.getElementById('tsiBtn').addEventListener('click', () => {
   if (!game.isMyTurn) {
-    alert('Not your turn!');
-    return;
+    return; // Silently ignore if not your turn
   }
   
   // Toggle TSI
@@ -519,8 +518,7 @@ document.getElementById('tsiBtn').addEventListener('click', () => {
 
 document.getElementById('flyBtn').addEventListener('click', () => {
   if (!game.isMyTurn) {
-    alert('Not your turn!');
-    return;
+    return; // Silently ignore if not your turn
   }
   
   // Toggle FLY
@@ -541,8 +539,7 @@ document.getElementById('flyBtn').addEventListener('click', () => {
 // Add event listeners for Pi, Fold, Open buttons
 document.getElementById('piBtn').addEventListener('click', () => {
   if (!game.isMyTurn) {
-    alert('Not your turn!');
-    return;
+    return; // Silently ignore if not your turn
   }
   
   if (!game.currentBid) {
@@ -567,8 +564,7 @@ document.getElementById('piBtn').addEventListener('click', () => {
 
 document.getElementById('foldBtn').addEventListener('click', () => {
   if (!game.isMyTurn) {
-    alert('Not your turn!');
-    return;
+    return; // Silently ignore if not your turn
   }
   
   if (game.stakes === 1) {
@@ -587,8 +583,7 @@ document.getElementById('foldBtn').addEventListener('click', () => {
 
 document.getElementById('openBtn').addEventListener('click', () => {
   if (!game.isMyTurn) {
-    alert('Not your turn!');
-    return;
+    return; // Silently ignore if not your turn
   }
   
   if (game.stakes === 1) {
@@ -650,6 +645,11 @@ document.getElementById('endGameBtn').addEventListener('click', () => {
   });
 });
 
+// Return to home screen
+document.getElementById('returnHomeBtn').addEventListener('click', () => {
+  window.location.href = '/'; // Reload the page to start fresh
+});
+
 // Leave lobby
 document.getElementById('leaveLobbyBtn').addEventListener('click', () => {
   socket.emit('leaveGame', {
@@ -673,8 +673,7 @@ document.getElementById('leaveGameBtn').addEventListener('click', () => {
 // Place bid
 document.getElementById('bidBtn').addEventListener('click', () => {
   if (!game.isMyTurn) {
-    alert('Not your turn!');
-    return;
+    return; // Silently ignore if not your turn
   }
   
   // Validate bid against current bid
@@ -739,8 +738,7 @@ document.getElementById('bidBtn').addEventListener('click', () => {
 // Challenge bid
 document.getElementById('challengeBtn').addEventListener('click', () => {
   if (!game.isMyTurn) {
-    alert('Not your turn!');
-    return;
+    return; // Silently ignore if not your turn
   }
   
   if (!game.currentBid) {
@@ -859,18 +857,6 @@ socket.on('piCalled', ({ player, newStakes, state }) => {
   
   game.isMyTurn = isMyTurn;
   
-  // Enable the correct buttons when it's your turn after a Pi
-  if (game.isMyTurn) {
-    // Enable Pi (if under limit), Fold and Open buttons
-    document.getElementById('piBtn').disabled = game.piCount >= 3;
-    document.getElementById('foldBtn').disabled = false;
-    document.getElementById('openBtn').disabled = false;
-    
-    // Disable other action buttons in Pi situations
-    document.getElementById('bidBtn').disabled = true;
-    document.getElementById('challengeBtn').disabled = true;
-  }
-  
   updateGameUI();
   
   // Show notification
@@ -917,6 +903,7 @@ socket.on('challengeResult', ({ challenger, result, allDice, baseStakeValue, sta
   
   // Determine if I won or lost
   const isWinner = result.winner.id === game.playerId;
+  const isLoser = result.loser.id === game.playerId;
   
   // Set round summary text
   document.getElementById('roundSummaryText').innerHTML = `
@@ -958,6 +945,17 @@ socket.on('challengeResult', ({ challenger, result, allDice, baseStakeValue, sta
     diceReveal.appendChild(playerDiceElem);
   }
   
+  // Only show next round and end game buttons for loser
+  document.getElementById('nextRoundBtn').style.display = isLoser ? 'block' : 'none';
+  document.getElementById('endGameBtn').style.display = isLoser ? 'block' : 'none';
+  
+  // Show message to wait for loser to decide if you're not the loser
+  if (!isLoser) {
+    document.getElementById('roundSummaryText').innerHTML += `
+      <p class="waiting-message">Waiting for ${loserName} to decide whether to continue...</p>
+    `;
+  }
+  
   // Show the round summary screen
   showScreen('roundSummary');
 });
@@ -968,6 +966,7 @@ socket.on('foldResult', ({ loser, winner, penalty, state, baseStakeValue }) => {
   
   // Determine if I won or lost
   const isWinner = winner.id === game.playerId;
+  const isLoser = loser.id === game.playerId;
   
   // Set round summary text
   document.getElementById('roundSummaryText').innerHTML = `
@@ -979,6 +978,17 @@ socket.on('foldResult', ({ loser, winner, penalty, state, baseStakeValue }) => {
   
   // No dice to show for fold
   document.getElementById('summaryDiceReveal').innerHTML = '';
+  
+  // Only show next round and end game buttons for loser
+  document.getElementById('nextRoundBtn').style.display = isLoser ? 'block' : 'none';
+  document.getElementById('endGameBtn').style.display = isLoser ? 'block' : 'none';
+  
+  // Show message to wait for loser to decide if you're not the loser
+  if (!isLoser) {
+    document.getElementById('roundSummaryText').innerHTML += `
+      <p class="waiting-message">Waiting for ${loser.name} to decide whether to continue...</p>
+    `;
+  }
   
   // Update game state
   updateGameState(state);
@@ -1176,24 +1186,8 @@ function updateGameUI() {
   document.getElementById('roundNumber').textContent = game.round;
   roundIndicator.innerHTML = `Round: <span id="roundNumber">${game.round}</span> - ${scoreDisplay} - ${moneyDisplay}`;
   
-  // Enable/disable bid controls based on turn
-  const bidControls = document.getElementById('bidControls');
-  bidControls.style.opacity = game.isMyTurn ? '1' : '0.5';
-  
-  // Check if we're in Pi mode
-  const isInPiResponse = game.stakes > 1 && game.isMyTurn;
-  
-  // Regular mode buttons
-  document.getElementById('bidBtn').disabled = !game.isMyTurn || isInPiResponse;
-  document.getElementById('challengeBtn').disabled = !game.isMyTurn || !game.currentBid || isInPiResponse;
-  
-  // Pi mode buttons
-  document.getElementById('piBtn').disabled = !game.isMyTurn || !game.currentBid || game.piCount >= 3;
-  document.getElementById('foldBtn').disabled = !game.isMyTurn || game.stakes === 1;
-  document.getElementById('openBtn').disabled = !game.isMyTurn || game.stakes === 1;
-  
-  // Update bid buttons validity
-  updateBidValidity();
+  // Update control visibility based on turn
+  updateGameControls();
   
   // Update bid history
   updateBidHistory();
@@ -1255,23 +1249,118 @@ function updateBidHistory() {
 }
 
 function updateGameControls() {
-  // Enable/disable bid controls based on turn
+  // Bid controls container
   const bidControls = document.getElementById('bidControls');
-  bidControls.style.opacity = game.isMyTurn ? '1' : '0.5';
   
-  // Check if we're in Pi mode
-  const isInPiResponse = game.stakes > 1 && game.isMyTurn;
+  // Show controls only for the player whose turn it is
+  if (!game.isMyTurn) {
+    bidControls.style.display = 'none';
+    return;
+  }
   
-  // Regular mode buttons
-  document.getElementById('bidBtn').disabled = !game.isMyTurn || isInPiResponse;
-  document.getElementById('challengeBtn').disabled = !game.isMyTurn || !game.currentBid || isInPiResponse;
+  // Show controls for player on turn
+  bidControls.style.display = 'block';
+  
+  // Check if we're in Pi mode (responding to a Pi)
+  const isInPiResponse = game.stakes > 1 && game.isMyTurn && 
+                         game.currentPlayerIndex !== null && 
+                         game.players[game.currentPlayerIndex]?.id === game.playerId &&
+                         game.currentBid && 
+                         game.players.findIndex(p => p.id === game.playerId) !== 
+                         game.players.findIndex(p => p.id === game.currentBid.player);
+  
+  // Regular bid elements
+  const countBidElem = document.querySelector('.bid-selector:nth-of-type(1)');
+  const valueBidElem = document.querySelector('.bid-selector:nth-of-type(2)');
+  const bidTypeButtons = document.querySelector('.bid-type-buttons');
+  
+  // Regular bid buttons
+  const bidBtn = document.getElementById('bidBtn');
+  const challengeBtn = document.getElementById('challengeBtn');
   
   // Pi mode buttons
-  document.getElementById('piBtn').disabled = !game.isMyTurn || !game.currentBid || game.piCount >= 3;
-  document.getElementById('foldBtn').disabled = !game.isMyTurn || game.stakes === 1;
-  document.getElementById('openBtn').disabled = !game.isMyTurn || game.stakes === 1;
+  const piBtn = document.getElementById('piBtn');
+  const foldBtn = document.getElementById('foldBtn');
+  const openBtn = document.getElementById('openBtn');
   
-  // Update bid buttons validity
+  // Determine Fly button availability (only after Tsi bid)
+  const flyButton = document.getElementById('flyBtn');
+  const isFlyAvailable = game.currentBid && game.currentBid.isTsi;
+  flyButton.style.display = isFlyAvailable ? 'inline-block' : 'none';
+  
+  // First bid of the game
+  if (!game.currentBid) {
+    // Regular bidding controls
+    countBidElem.style.display = 'block';
+    valueBidElem.style.display = 'block';
+    bidTypeButtons.style.display = 'block';
+    
+    // Show only bid button
+    bidBtn.style.display = 'block';
+    challengeBtn.style.display = 'none';
+    
+    // Hide Pi mode controls
+    piBtn.style.display = 'none';
+    foldBtn.style.display = 'none';
+    openBtn.style.display = 'none';
+    
+    return;
+  }
+  
+  // Pi mode
+  if (isInPiResponse) {
+    // Hide regular bidding controls
+    countBidElem.style.display = 'none';
+    valueBidElem.style.display = 'none';
+    bidTypeButtons.style.display = 'none';
+    bidBtn.style.display = 'none';
+    challengeBtn.style.display = 'none';
+    
+    // Show Pi mode controls
+    const foldPenalty = Math.floor(game.stakes / 2);
+    
+    // Update Pi button label based on Pi count
+    if (game.piCount < 3) {
+      const piLabels = ["Pi (2x)", "Pi (4x)", "Pi (8x)"];
+      piBtn.textContent = piLabels[game.piCount];
+      piBtn.style.display = 'block';
+    } else {
+      piBtn.style.display = 'none';
+    }
+    
+    // Show Fold with penalty amount
+    foldBtn.textContent = `Fold (-${foldPenalty}p)`;
+    foldBtn.style.display = 'block';
+    
+    // Show Open button
+    openBtn.style.display = 'block';
+  } 
+  // Regular mode
+  else {
+    // Show regular bidding controls
+    countBidElem.style.display = 'block';
+    valueBidElem.style.display = 'block';
+    bidTypeButtons.style.display = 'block';
+    
+    // Show regular action buttons
+    bidBtn.style.display = 'block';
+    challengeBtn.style.display = game.currentBid ? 'block' : 'none';
+    
+    // Show Pi button, hide fold/open
+    piBtn.style.display = game.currentBid ? 'block' : 'none';
+    foldBtn.style.display = 'none';
+    openBtn.style.display = 'none';
+    
+    // Update Pi button label
+    if (game.piCount < 3) {
+      const piLabels = ["Pi (2x)", "Pi (4x)", "Pi (8x)"];
+      piBtn.textContent = piLabels[game.piCount];
+    } else {
+      piBtn.style.display = 'none';
+    }
+  }
+  
+  // Update bid validity
   updateBidValidity();
 }
 

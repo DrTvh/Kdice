@@ -6,6 +6,7 @@ class DiceGame {
     this.currentPlayerIndex = null;
     this.currentBid = null; // {count: Number, value: Number, isTsi: Boolean, isFly: Boolean}
     this.gameStarted = false;
+    this.gameEnded = false;
     this.dices = {};
     this.lastRoundLoser = null;
     this.round = 0;
@@ -91,6 +92,7 @@ class DiceGame {
     }
     
     this.gameStarted = true;
+    this.gameEnded = false;
     this.round = 1;
     this.rollDices();
     
@@ -238,6 +240,9 @@ class DiceGame {
       this.lastRoundLoser = loser.id;
     }
     
+    // Update scores based on current stakes
+    this.updatePlayerScore(winner.id, loser.id, this.stakes);
+    
     // End round and return results
     return {
       success: true,
@@ -245,7 +250,8 @@ class DiceGame {
       loser,
       actualCount,
       bid: this.currentBid,
-      dices: this.dices
+      dices: this.dices,
+      stakes: this.stakes
     };
   }
 
@@ -273,7 +279,8 @@ class DiceGame {
     return {
       success: true,
       player: this.players.find(p => p.id === playerId),
-      newStakes: this.stakes
+      newStakes: this.stakes,
+      piCount: this.piCount
     };
   }
 
@@ -294,6 +301,9 @@ class DiceGame {
     const penalty = Math.floor(this.stakes / 2);
     this.lastRoundLoser = playerId;
     
+    // Update scores
+    this.updatePlayerScore(prevPlayer.id, playerId, penalty);
+    
     return {
       success: true,
       loser: this.getCurrentPlayer(),
@@ -312,7 +322,8 @@ class DiceGame {
     }
     
     // Same as challenge but with higher stakes
-    return this.challenge(playerId);
+    const result = this.challenge(playerId);
+    return result;
   }
 
   startNextRound() {
@@ -326,6 +337,30 @@ class DiceGame {
     if (this.lastRoundLoser !== null) {
       this.currentPlayerIndex = this.players.findIndex(player => player.id === this.lastRoundLoser);
     }
+    
+    return true;
+  }
+  
+  endGame() {
+    this.gameEnded = true;
+    
+    // Generate leaderboard based on player scores
+    const leaderboard = Object.keys(this.playerScores)
+      .map(playerId => {
+        const player = this.players.find(p => p.id === playerId);
+        return {
+          id: playerId,
+          name: player ? player.name : 'Unknown',
+          points: this.playerScores[playerId],
+          dollars: this.playerScores[playerId] * this.baseStakeValue
+        };
+      })
+      .sort((a, b) => b.points - a.points);
+    
+    return {
+      success: true,
+      leaderboard
+    };
   }
 
   getGameState(forPlayerId = null) {
@@ -333,6 +368,7 @@ class DiceGame {
       gameId: this.gameId,
       players: this.players,
       gameStarted: this.gameStarted,
+      gameEnded: this.gameEnded,
       currentPlayerIndex: this.currentPlayerIndex,
       currentBid: this.currentBid,
       round: this.round,
@@ -350,6 +386,29 @@ class DiceGame {
     }
     
     return state;
+  }
+  
+  // Helper method to calculate fold penalty
+  getFoldPenalty() {
+    return Math.floor(this.stakes / 2);
+  }
+  
+  // Helper to determine if Fly is available - only after a Tsi bid
+  isFlyAvailable() {
+    return this.currentBid && this.currentBid.isTsi;
+  }
+  
+  // Get the current Pi button label based on Pi count
+  getPiButtonLabel() {
+    if (this.piCount === 0) return "Pi (2x)";
+    if (this.piCount === 1) return "Pi (4x)";
+    if (this.piCount === 2) return "Pi (8x)";
+    return "Max Pi";
+  }
+  
+  // Check if Pi is available (max 3 times)
+  isPiAvailable() {
+    return this.piCount < 3;
   }
 }
 

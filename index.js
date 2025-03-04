@@ -37,6 +37,9 @@ const io = new Server(server);
 // Add JSON body parser middleware
 app.use(express.json());
 
+// Serve static files
+app.use(express.static(path.join(__dirname, 'public')));
+
 // Initialize Telegram Bot with webhook
 const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
 const webhookPath = `/bot${process.env.BOT_TOKEN}`;
@@ -47,6 +50,11 @@ app.post(webhookPath, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
+
+// Helper function to generate a random game ID
+function generateGameId() {
+  return Math.random().toString(36).substring(2, 10).toUpperCase();
+}
 
 // Player stats storage - global leaderboard
 const playerStats = {};
@@ -84,36 +92,29 @@ bot.on('message', (msg) => {
     }
   }
   
-  // Handle create game command for groups
+  // Handle create game command for groups with stake options in text format
   else if (msg.text && (msg.text === '/creategame' || msg.text.startsWith('/creategame@'))) {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const userName = msg.from.first_name || 'Player';
-    const gameId = generateGameId();
     
-    // Create game with default stake
-    const game = new DiceGame(gameId);
-    game.originChatId = chatId;
-    game.baseStakeValue = 100; // Default stake ($100)
-    game.addPlayer(`tg_${userId}`, userName); // Ensure consistent ID format
-    
-    // Store the game
-    activeGames[gameId] = game;
-    
-    // Also track this game's origin for leaderboard
-    gameOrigins[gameId] = chatId;
-    
-    const appUrl = `https://kdice.onrender.com/?join=${gameId}&userId=${userId}&userName=${encodeURIComponent(userName)}`;
-    
-    // Announce the game in the chat with direct join link for creator
+    // Offer stake options via text message
     bot.sendMessage(chatId, 
-      `${userName} created a new game!\nGame ID: ${gameId}\nWaiting for players to join...`, {
+      `${userName} wants to create a new game!\nChoose your stake:`, {
       reply_markup: {
-        inline_keyboard: [[
-          { text: "👉 Join this game", url: appUrl }
-        ],[
-          { text: "👥 Other players join with /join", callback_data: "join_info" }
-        ]]
+        inline_keyboard: [
+          [
+            { text: "Free ($0)", callback_data: `create_game_0_${userId}_${encodeURIComponent(userName)}` },
+            { text: "Low ($100)", callback_data: `create_game_100_${userId}_${encodeURIComponent(userName)}` }
+          ],
+          [
+            { text: "Medium ($500)", callback_data: `create_game_500_${userId}_${encodeURIComponent(userName)}` },
+            { text: "High ($1000)", callback_data: `create_game_1000_${userId}_${encodeURIComponent(userName)}` }
+          ],
+          [
+            { text: "VIP ($10000)", callback_data: `create_game_10000_${userId}_${encodeURIComponent(userName)}` }
+          ]
+        ]
       }
     });
   }
@@ -126,10 +127,11 @@ bot.on('message', (msg) => {
     
     // Find active games from this group chat
     const activeGroupGames = Object.entries(activeGames)
-      .filter(([_, game]) => game.originChatId === chatId)
+      .filter(([_, game]) => game.originChatId === chatId && !game.gameStarted && !game.gameEnded)
       .map(([id, game]) => ({
         id,
-        creator: game.players[0]?.name || 'Unknown'
+        creator: game.players[0]?.name || 'Unknown',
+        stakeValue: game.baseStakeValue
       }));
     
     if (activeGroupGames.length === 0) {
@@ -137,10 +139,31 @@ bot.on('message', (msg) => {
       return;
     }
     
+    // Check if the user is already in a game
+    const alreadyInGame = activeGroupGames.some(game => 
+      activeGames[game.id].players.some(p => p.id === `tg_${userId}`)
+    );
+    
+    if (alreadyInGame) {
+      // If already in a game, just provide the link to open it
+      const gameId = activeGroupGames.find(game => 
+        activeGames[game.id].players.some(p => p.id === `tg_${userId}`)
+      ).id;
+      
+      bot.sendMessage(chatId, `${userName}, you're already in a game. Click below to open it:`, {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}` } }
+          ]]
+        }
+      });
+      return;
+    }
+    
     // Create keyboard with available games
     const keyboard = activeGroupGames.map(game => [{
-      text: `Join ${game.creator}'s game`,
-      url: `https://kdice.onrender.com/?join=${game.id}&userId=${userId}&userName=${encodeURIComponent(userName)}`
+      text: `Join ${game.creator}'s game ($${game.stakeValue}/point)`,
+      callback_data: `join_game_${game.id}_${userId}_${encodeURIComponent(userName)}`
     }]);
     
     bot.sendMessage(chatId, "Choose a game to join:", {
@@ -151,8 +174,97 @@ bot.on('message', (msg) => {
   }
 });
 
+// Handle callback queries for game creation and joining
+bot.on('callback_query', (callbackQuery) => {
+  const data = callbackQuery.data;
+  const chatId = callbackQuery.message.chat.id;
+  
+  // Handle game creation with stake selection
+  if (data.startsWith('create_game_')) {
+    const parts = data.split('_');
+    const stakeValue = parseInt(parts[2]);
+    const creatorId = parts[3];
+    const creatorName = decodeURIComponent(parts[4]);
+    
+    // Generate a new game ID
+    const gameId = generateGameId();
+    
+    // Create a new game with the selected stake
+    const game = new DiceGame(gameId);
+    game.originChatId = chatId;
+    game.baseStakeValue = stakeValue;
+    game.addPlayer(`tg_${creatorId}`, creatorName);
+    
+    // Store the game
+    activeGames[gameId] = game;
+    gameOrigins[gameId] = chatId;
+    
+    // Answer the callback query
+    bot.answerCallbackQuery(callbackQuery.id, { text: `Game created with $${stakeValue} stake!` });
+    
+    // Announce the game creation with join instructions
+    bot.sendMessage(chatId, 
+      `${creatorName} created a new game with $${stakeValue}/point stake!\n\nGame ID: ${gameId}\n\nOther players type /join to join this game.`);
+      
+    // Send a private message to the creator with the direct link
+    bot.sendMessage(creatorId, `You created a game with $${stakeValue}/point stake. Click below to open it:`, {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "Open Your Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}` } }
+        ]]
+      }
+    }).catch(err => logger.error('Failed to send private message to creator', err));
+  }
+  
+  // Handle game joining
+  else if (data.startsWith('join_game_')) {
+    const parts = data.split('_');
+    const gameId = parts[2];
+    const joinerId = parts[3];
+    const joinerName = decodeURIComponent(parts[4]);
+    
+    const game = activeGames[gameId];
+    
+    if (!game) {
+      bot.answerCallbackQuery(callbackQuery.id, { text: "Game not found or already ended!" });
+      return;
+    }
+    
+    if (game.gameStarted) {
+      bot.answerCallbackQuery(callbackQuery.id, { text: "Game already started!" });
+      return;
+    }
+    
+    // Add the player to the game
+    if (game.addPlayer(`tg_${joinerId}`, joinerName)) {
+      bot.answerCallbackQuery(callbackQuery.id, { text: "Joined the game successfully!" });
+      
+      // Announce the player joining
+      bot.sendMessage(chatId, 
+        `${joinerName} joined ${game.players[0].name}'s game! The game can now begin.`);
+      
+      // Send a private message to the joiner with the direct link
+      bot.sendMessage(joinerId, `You joined ${game.players[0].name}'s game. Click below to open it:`, {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}` } }
+          ]]
+        }
+      }).catch(err => logger.error('Failed to send private message to joiner', err));
+      
+      // Notify all connected clients about the new player
+      io.to(gameId).emit('playerJoined', {
+        player: { id: `tg_${joinerId}`, name: joinerName },
+        state: game.getGameState()
+      });
+    } else {
+      bot.answerCallbackQuery(callbackQuery.id, { text: "Failed to join game!" });
+    }
+  }
+});
+
 // Function to update player stats
-function updatePlayerStats(winner, loser, stakes) {
+function updatePlayerStats(winner, loser, stakes, gameId) {
   // Initialize player stats if needed
   if (!playerStats[winner.id]) {
     playerStats[winner.id] = { 
@@ -195,10 +307,7 @@ function updatePlayerStats(winner, loser, stakes) {
   });
   
   // If game came from a group chat, announce the result
-  const game = Object.values(activeGames).find(g => 
-    g.players.some(p => p.id === winner.id) && 
-    g.players.some(p => p.id === loser.id)
-  );
+  const game = activeGames[gameId];
   
   if (game && game.originChatId) {
     bot.sendMessage(game.originChatId, 
@@ -218,8 +327,15 @@ function postLeaderboard(gameId) {
   // Create a sorted leaderboard of just the players in this game
   const gamePlayerIds = game.players.map(p => p.id);
   const gameLeaderboard = gamePlayerIds
-    .map(id => playerStats[id])
-    .filter(Boolean)
+    .map(id => {
+      const stats = playerStats[id] || {
+        name: game.players.find(p => p.id === id)?.name || 'Unknown',
+        points: game.playerScores[id] || 0,
+        rounds: 0,
+        dollars: (game.playerScores[id] || 0) * game.baseStakeValue
+      };
+      return stats;
+    })
     .sort((a, b) => b.points - a.points);
   
   // Generate leaderboard text
@@ -244,526 +360,460 @@ function postLeaderboard(gameId) {
   
   globalLeaderboard.forEach((player, index) => {
     const pointsPerRound = player.rounds > 0 ? (player.points / player.rounds).toFixed(1) : '0.0';
-    leaderboardText += `${index + 1}. ${player.name}: ${player.points} pts (${pointsPerRound} pts/round)\n`;
+    leaderboardText += `${index + 1}. ${player.name}: ${player.points} pts (${pointsPerRound}/round)\n`;
   });
   
-  // Send to the group
-  bot.sendMessage(chatId, leaderboardText, { parse_mode: 'Markdown' });
+  // Send the leaderboard to the chat
+  bot.sendMessage(chatId, leaderboardText, {
+    parse_mode: 'Markdown'
+  });
+  
+  // Clean up game data
+  delete activeGames[gameId];
+  delete gameOrigins[gameId];
 }
 
-// Add endpoint to get leaderboard
-app.get('/api/leaderboard', (req, res) => {
-  // Convert playerStats object to array and sort by points
-  const leaderboard = Object.values(playerStats)
-    .sort((a, b) => b.points - a.points)
-    .slice(0, 10); // Get top 10
-  
-  res.json(leaderboard);
-});
-
-// Socket.io connection handling
+// Set up Socket.IO for real-time communication
 io.on('connection', (socket) => {
-  logger.info('User connected', { socketId: socket.id });
+  logger.info('New socket connection', { socketId: socket.id });
   
-  // Create a new game
-  socket.on('createGame', ({ playerName, playerId, stakeValue = 100 }) => {
+  // Handle creating a new game
+  socket.on('createGame', ({ playerName, playerId, stakeValue }) => {
+    // Ensure valid player data
+    if (!playerName || !playerId) {
+      socket.emit('error', { message: 'Missing player information' });
+      return;
+    }
+    
+    // Create a game ID
     const gameId = generateGameId();
+    
+    // Create a new game instance
     const game = new DiceGame(gameId);
+    game.baseStakeValue = stakeValue || 100;
     
-    // Set the stake value
-    game.baseStakeValue = stakeValue;
-    
-    // Add the creator as first player
+    // Add the player to the game
     game.addPlayer(playerId, playerName);
     
     // Store the game
     activeGames[gameId] = game;
     
-    // Join the socket to the game room
+    // Subscribe the socket to the game room
     socket.join(gameId);
     
-    // Send back the game ID and initial state
-    socket.emit('gameCreated', { 
-      gameId, 
-      state: game.getGameState(playerId) 
-    });
+    logger.info('Game created', { gameId, playerName, playerId });
     
-    logger.info(`Game created`, { gameId, playerName, playerId, stakeValue });
+    // Send response to the client
+    socket.emit('gameCreated', {
+      gameId,
+      state: game.getGameState(playerId)
+    });
   });
   
-  // Join an existing game
+  // Handle joining an existing game
   socket.on('joinGame', ({ gameId, playerName, playerId }) => {
+    // Check if the game exists
+    if (!activeGames[gameId]) {
+      socket.emit('error', { message: 'Game not found' });
+      return;
+    }
+    
+    // Get the game instance
     const game = activeGames[gameId];
     
-    if (!game) {
-      socket.emit('error', { message: 'Game not found' });
-      logger.error(`Join failed - game not found`, { gameId, playerId });
-      return;
-    }
-    
+    // Check if the game has already started
     if (game.gameStarted) {
-      socket.emit('error', { message: 'Game already started' });
-      logger.error(`Join failed - game already started`, { gameId, playerId });
+      socket.emit('error', { message: 'Game has already started' });
       return;
     }
     
-    // Normalize the player ID to match our format in addPlayer
-    const normalizedPlayerId = playerId.startsWith('tg_') 
-      ? playerId 
-      : `tg_${playerId}`;
+    // Normalize player ID
+    const normalizedPlayerId = playerId.startsWith('tg_') ? playerId : `tg_${playerId}`;
     
-    // Check if this player already exists in the game
-    const existingPlayerIndex = game.players.findIndex(p => {
-      const normalizedId = p.id.startsWith('tg_') ? p.id : `tg_${p.id}`;
-      return normalizedId === normalizedPlayerId || 
-             (p.name === playerName && playerName !== 'Player');
+    // Check if the player is already in the game
+    const alreadyJoined = game.players.some(player => player.id === normalizedPlayerId);
+    
+    // Add the player to the game if not already joined
+    if (!alreadyJoined) {
+      if (!game.addPlayer(normalizedPlayerId, playerName)) {
+        socket.emit('error', { message: 'Failed to join game' });
+        return;
+      }
+    }
+    
+    // Subscribe the socket to the game room
+    socket.join(gameId);
+    
+    logger.info('Player joined game', { gameId, playerName, playerId, alreadyJoined });
+    
+    // Send response to the client
+    socket.emit('gameJoined', {
+      gameId,
+      state: game.getGameState(normalizedPlayerId),
+      alreadyJoined
     });
     
-    if (existingPlayerIndex !== -1) {
-      // If player already exists, return their state but don't add again
-      logger.info(`Player already in game`, { gameId, playerName, playerId });
-      
-      socket.join(gameId);
-      socket.emit('gameJoined', { 
-        gameId,
-        state: game.getGameState(game.players[existingPlayerIndex].id),
-        alreadyJoined: true
-      });
-      return;
-    }
-    
-    // Normal join logic for new players
-    if (game.addPlayer(playerId, playerName)) {
-      // Join the socket to the game room
-      socket.join(gameId);
-      
-      // Notify all players about the new player
-      io.to(gameId).emit('playerJoined', { 
-        player: { id: playerId, name: playerName },
+    // Notify other players if this is a new player
+    if (!alreadyJoined) {
+      socket.to(gameId).emit('playerJoined', {
+        player: { id: normalizedPlayerId, name: playerName },
         state: game.getGameState()
       });
-      
-      // Send the new player their complete state
-      socket.emit('gameJoined', { 
-        gameId,
-        state: game.getGameState(playerId) 
-      });
-      
-      logger.info(`Player joined game`, { gameId, playerName, playerId });
-      
-      // If this game was created from a group chat, announce the join
-      if (game.originChatId) {
-        const creatorName = game.players[0].name;
-        bot.sendMessage(game.originChatId, 
-          `${playerName} joined ${creatorName}'s game! The game can now begin.`
-        );
-      }
-    } else {
-      socket.emit('error', { message: 'Failed to join game' });
-      logger.error(`Join failed - could not add player`, { gameId, playerId });
-    }
-  });
-   
-  // Start the game
-  socket.on('startGame', ({ gameId, playerId }) => {
-    const game = activeGames[gameId];
-    
-    if (!game) {
-      socket.emit('error', { message: 'Game not found' });
-      logger.error(`Start game failed - game not found`, { gameId, playerId });
-      return;
-    }
-    
-    if (game.gameStarted) {
-      socket.emit('error', { message: 'Game already started' });
-      logger.error(`Start game failed - already started`, { gameId, playerId });
-      return;
-    }
-    
-    if (game.startGame()) {
-      // Send updated game state to all players
-      for (const player of game.players) {
-        // Send personalized state to each player with their dice
-        io.to(gameId).emit('gameStarted', { 
-          state: game.getGameState(player.id),
-          playerId: player.id
-        });
-      }
-      
-      // Broadcast general game state
-      io.to(gameId).emit('gameUpdate', { state: game.getGameState() });
-      
-      logger.info(`Game started`, { 
-        gameId, 
-        playerCount: game.players.length,
-        players: game.players.map(p => p.name)
-      });
-      
-      // If this game was created from a group chat, announce game start
-      if (game.originChatId && game.players.length >= 2) {
-        const playerNames = game.players.map(p => p.name).join(" and ");
-        bot.sendMessage(game.originChatId, 
-          `Game started between ${playerNames}!`
-        );
-      }
-    } else {
-      socket.emit('error', { message: 'Cannot start game, need at least 2 players' });
-      logger.error(`Start game failed - not enough players`, { gameId, playerId });
     }
   });
   
-  // Place a bid
-  socket.on('placeBid', ({ gameId, playerId, count, value, isTsi, isFly }) => {
+  // Handle starting the game
+  socket.on('startGame', ({ gameId, playerId }) => {
+    // Check if the game exists
+    if (!activeGames[gameId]) {
+      socket.emit('error', { message: 'Game not found' });
+      return;
+    }
+    
+    // Get the game instance
     const game = activeGames[gameId];
     
-    if (!game) {
+    // Check if the requester is the game creator
+    if (game.players.length > 0 && game.players[0].id !== playerId) {
+      socket.emit('error', { message: 'Only the creator can start the game' });
+      return;
+    }
+    
+    // Check if there are enough players
+    if (game.players.length < 2) {
+      socket.emit('error', { message: 'Need at least 2 players to start' });
+      return;
+    }
+    
+    // Start the game
+    if (!game.startGame()) {
+      socket.emit('error', { message: 'Failed to start the game' });
+      return;
+    }
+    
+    logger.info('Game started', { gameId, startedBy: playerId });
+    
+    // Notify all players
+    for (const player of game.players) {
+      io.to(gameId).emit('gameStarted', {
+        state: game.getGameState(player.id),
+        playerId: player.id
+      });
+    }
+    
+    // Tell the first player it's their turn
+    const currentPlayer = game.getCurrentPlayer();
+    io.to(gameId).emit('yourTurn', {
+      state: game.getGameState(currentPlayer.id),
+      playerId: currentPlayer.id
+    });
+  });
+  
+  // Handle player placing a bid
+  socket.on('placeBid', ({ gameId, playerId, count, value, isTsi, isFly }) => {
+    // Check if the game exists
+    if (!activeGames[gameId]) {
       socket.emit('error', { message: 'Game not found' });
-      logger.error(`Bid failed - game not found`, { gameId, playerId });
       return;
     }
     
-    if (!game.gameStarted) {
-      socket.emit('error', { message: 'Game not started yet' });
-      logger.error(`Bid failed - game not started`, { gameId, playerId });
-      return;
-    }
+    // Get the game instance
+    const game = activeGames[gameId];
     
+    // Place the bid
     const result = game.placeBid(playerId, count, value, isTsi, isFly);
     
-    if (result.success) {
-      // Get the next player who will take their turn
-      const nextPlayer = game.getCurrentPlayer();
-      
-      // Send updated game state to all players
-      io.to(gameId).emit('bidPlaced', { 
-        player: game.players.find(p => p.id === playerId),
-        bid: { count, value, isTsi, isFly },
-        state: game.getGameState(),
-        nextPlayerId: nextPlayer.id
-      });
-      
-      // Send the next player their dice
-      io.to(gameId).emit('yourTurn', {
-        state: game.getGameState(nextPlayer.id),
-        playerId: nextPlayer.id
-      });
-      
-      logger.info(`Bid placed`, {
-        gameId,
-        playerId,
-        count,
-        value,
-        isTsi,
-        isFly,
-        nextPlayerId: nextPlayer.id
-      });
-    } else {
+    if (!result.success) {
       socket.emit('error', { message: result.message });
-      logger.error(`Bid failed - ${result.message}`, { gameId, playerId });
+      return;
     }
+    
+    logger.info('Bid placed', { gameId, playerId, count, value, isTsi, isFly });
+    
+    // Get the player who made the bid
+    const bidder = game.players.find(p => p.id === playerId);
+    
+    // Notify all players about the bid
+    io.to(gameId).emit('bidPlaced', {
+      player: bidder,
+      bid: { count, value, isTsi, isFly },
+      state: game.getGameState(),
+      nextPlayerId: game.getCurrentPlayer().id
+    });
+    
+    // Tell the next player it's their turn
+    const currentPlayer = game.getCurrentPlayer();
+    io.to(gameId).emit('yourTurn', {
+      state: game.getGameState(currentPlayer.id),
+      playerId: currentPlayer.id
+    });
   });
   
-  // Challenge a bid
+  // Handle player challenging a bid
   socket.on('challenge', ({ gameId, playerId }) => {
+    // Check if the game exists
+    if (!activeGames[gameId]) {
+      socket.emit('error', { message: 'Game not found' });
+      return;
+    }
+    
+    // Get the game instance
     const game = activeGames[gameId];
     
-    if (!game) {
-      socket.emit('error', { message: 'Game not found' });
-      logger.error(`Challenge failed - game not found`, { gameId, playerId });
-      return;
-    }
-    
-    if (!game.gameStarted) {
-      socket.emit('error', { message: 'Game not started yet' });
-      logger.error(`Challenge failed - game not started`, { gameId, playerId });
-      return;
-    }
-    
+    // Challenge the bid
     const result = game.challenge(playerId);
     
-    if (result.success) {
-      // Update player scores in game
-      game.updatePlayerScore(result.winner.id, result.loser.id, game.stakes);
-      
-      // Update player stats globally
-      updatePlayerStats(result.winner, result.loser, game.stakes);
-      
-      // Send challenge results to all players
-      io.to(gameId).emit('challengeResult', { 
-        challenger: game.players.find(p => p.id === playerId),
-        result: result,
-        allDice: game.dices,
-        baseStakeValue: game.baseStakeValue,
-        stakes: game.stakes
-      });
-      
-      // Don't automatically start next round
-      // Players will choose to continue or end game
-      
-      logger.info(`Challenge`, {
-        gameId,
-        challenger: playerId,
-        winner: result.winner.name,
-        loser: result.loser.name,
-        actualCount: result.actualCount,
-        bid: `${result.bid.count} ${result.bid.value}'s` 
-      });
-    } else {
+    if (!result.success) {
       socket.emit('error', { message: result.message });
-      logger.error(`Challenge failed - ${result.message}`, { gameId, playerId });
+      return;
     }
+    
+    logger.info('Bid challenged', { 
+      gameId, 
+      challengerId: playerId, 
+      winner: result.winner.name,
+      loser: result.loser.name,
+      stakes: game.stakes
+    });
+    
+    // Update player stats
+    updatePlayerStats(result.winner, result.loser, game.stakes, gameId);
+    
+    // Notify all players about the challenge result
+    io.to(gameId).emit('challengeResult', {
+      challenger: game.players.find(p => p.id === playerId),
+      result: result,
+      allDice: result.dices,
+      baseStakeValue: game.baseStakeValue,
+      stakes: game.stakes
+    });
   });
   
-  // Start next round after player confirmation
-  socket.on('startNextRound', ({ gameId }) => {
-    const game = activeGames[gameId];
-    
-    if (!game) {
+  // Handle player calling Pi (double stakes)
+  socket.on('pi', ({ gameId, playerId }) => {
+    // Check if the game exists
+    if (!activeGames[gameId]) {
       socket.emit('error', { message: 'Game not found' });
       return;
     }
     
-    // Start next round
-    game.startNextRound();
+    // Get the game instance
+    const game = activeGames[gameId];
     
-    // Send updated state to all players for the new round
+    // Call Pi
+    const result = game.pi(playerId);
+    
+    if (!result.success) {
+      socket.emit('error', { message: result.message });
+      return;
+    }
+    
+    logger.info('Pi called', { 
+      gameId, 
+      playerId, 
+      newStakes: result.newStakes,
+      piCount: result.piCount
+    });
+    
+    // Notify all players about the Pi call
+    io.to(gameId).emit('piCalled', {
+      player: result.player,
+      newStakes: result.newStakes,
+      state: game.getGameState()
+    });
+    
+    // Tell the next player it's their turn
+    const currentPlayer = game.getCurrentPlayer();
+    io.to(gameId).emit('yourTurn', {
+      state: game.getGameState(currentPlayer.id),
+      playerId: currentPlayer.id
+    });
+  });
+  
+  // Handle player folding
+  socket.on('fold', ({ gameId, playerId }) => {
+    // Check if the game exists
+    if (!activeGames[gameId]) {
+      socket.emit('error', { message: 'Game not found' });
+      return;
+    }
+    
+    // Get the game instance
+    const game = activeGames[gameId];
+    
+    // Fold
+    const result = game.fold(playerId);
+    
+    if (!result.success) {
+      socket.emit('error', { message: result.message });
+      return;
+    }
+    
+    logger.info('Player folded', { 
+      gameId, 
+      folderId: playerId, 
+      winnerId: result.winner.id,
+      penalty: result.penalty
+    });
+    
+    // Notify all players about the fold
+    io.to(gameId).emit('foldResult', {
+      loser: result.loser,
+      winner: result.winner,
+      penalty: result.penalty,
+      state: game.getGameState(),
+      baseStakeValue: game.baseStakeValue
+    });
+  });
+  
+  // Handle player calling Open
+  socket.on('open', ({ gameId, playerId }) => {
+    // Check if the game exists
+    if (!activeGames[gameId]) {
+      socket.emit('error', { message: 'Game not found' });
+      return;
+    }
+    
+    // Get the game instance
+    const game = activeGames[gameId];
+    
+    // Open (same as challenge but with different stakes)
+    const result = game.open(playerId);
+    
+    if (!result.success) {
+      socket.emit('error', { message: result.message });
+      return;
+    }
+    
+    logger.info('Open called', { 
+      gameId, 
+      openerId: playerId, 
+      winner: result.winner.name,
+      loser: result.loser.name,
+      stakes: game.stakes
+    });
+    
+    // Update player stats
+    updatePlayerStats(result.winner, result.loser, game.stakes, gameId);
+    
+    // Notify all players about the challenge result
+    io.to(gameId).emit('challengeResult', {
+      challenger: game.players.find(p => p.id === playerId),
+      result: result,
+      allDice: result.dices,
+      baseStakeValue: game.baseStakeValue,
+      stakes: game.stakes
+    });
+  });
+  
+  // Handle starting the next round
+  socket.on('startNextRound', ({ gameId }) => {
+    // Check if the game exists
+    if (!activeGames[gameId]) {
+      socket.emit('error', { message: 'Game not found' });
+      return;
+    }
+    
+    // Get the game instance
+    const game = activeGames[gameId];
+    
+    // Start the next round
+    if (!game.startNextRound()) {
+      socket.emit('error', { message: 'Failed to start next round' });
+      return;
+    }
+    
+    logger.info('Next round started', { gameId, round: game.round });
+    
+    // Notify all players
     for (const player of game.players) {
-      io.to(gameId).emit('roundStarted', { 
+      io.to(gameId).emit('roundStarted', {
         state: game.getGameState(player.id),
         playerId: player.id,
         round: game.round
       });
     }
     
-    // Send general game state update
-    io.to(gameId).emit('gameUpdate', { state: game.getGameState() });
-    
-    logger.info(`New round started`, { gameId, round: game.round });
+    // Tell the first player it's their turn
+    const currentPlayer = game.getCurrentPlayer();
+    io.to(gameId).emit('yourTurn', {
+      state: game.getGameState(currentPlayer.id),
+      playerId: currentPlayer.id
+    });
   });
   
-  // End game and show leaderboard
+  // Handle ending the game
   socket.on('endGame', ({ gameId }) => {
-    const game = activeGames[gameId];
-    
-    if (!game) {
+    // Check if the game exists
+    if (!activeGames[gameId]) {
       socket.emit('error', { message: 'Game not found' });
       return;
     }
     
-    // Send end game notification to all players
-    io.to(gameId).emit('gameEnded', { 
+    // Get the game instance
+    const game = activeGames[gameId];
+    
+    // End the game
+    const result = game.endGame();
+    
+    if (!result.success) {
+      socket.emit('error', { message: 'Failed to end game' });
+      return;
+    }
+    
+    logger.info('Game ended', { gameId });
+    
+    // Notify all players
+    io.to(gameId).emit('gameEnded', {
       state: game.getGameState(),
-      leaderboard: Object.values(playerStats)
-        .filter(player => game.players.some(p => p.id === player.id))
-        .sort((a, b) => b.points - a.points)
+      leaderboard: result.leaderboard
     });
     
-    // Post leaderboard to the group chat if applicable
-    postLeaderboard(gameId);
-    
-    logger.info(`Game ended`, { gameId });
-    
-    // Remove the game after a delay to allow players to see final results
-    setTimeout(() => {
-      delete activeGames[gameId];
-      delete gameOrigins[gameId];
-    }, 60000); // 1 minute delay
-  });
-  
-  // Pi (double stakes)
-  socket.on('pi', ({ gameId, playerId }) => {
-    const game = activeGames[gameId];
-    
-    if (!game) {
-      socket.emit('error', { message: 'Game not found' });
-      logger.error(`Pi failed - game not found`, { gameId, playerId });
-      return;
-    }
-    
-    if (!game.gameStarted) {
-      socket.emit('error', { message: 'Game not started yet' });
-      logger.error(`Pi failed - game not started`, { gameId, playerId });
-      return;
-    }
-    
-    const result = game.pi(playerId);
-    
-    if (result.success) {
-      // Send pi result to all players
-      io.to(gameId).emit('piCalled', {
-        player: result.player,
-        newStakes: result.newStakes,
-        state: game.getGameState()
-      });
-      
-      // Send the next player their turn notification
-      const nextPlayer = game.getCurrentPlayer();
-      io.to(gameId).emit('yourTurn', {
-        state: game.getGameState(nextPlayer.id),
-        playerId: nextPlayer.id
-      });
-      
-      logger.info(`Pi called`, {
-        gameId,
-        playerId,
-        newStakes: result.newStakes
-      });
-    } else {
-      socket.emit('error', { message: result.message });
-      logger.error(`Pi failed - ${result.message}`, { gameId, playerId });
+    // Post leaderboard to group chat if from there
+    if (game.originChatId) {
+      postLeaderboard(gameId);
     }
   });
   
-  // Fold (give up after Pi)
-  socket.on('fold', ({ gameId, playerId }) => {
-    const game = activeGames[gameId];
-    
-    if (!game) {
-      socket.emit('error', { message: 'Game not found' });
-      logger.error(`Fold failed - game not found`, { gameId, playerId });
-      return;
-    }
-    
-    if (!game.gameStarted) {
-      socket.emit('error', { message: 'Game not started yet' });
-      logger.error(`Fold failed - game not started`, { gameId, playerId });
-      return;
-    }
-    
-    const result = game.fold(playerId);
-    
-    if (result.success) {
-      // Update player scores in game
-      game.updatePlayerScore(result.winner.id, result.loser.id, result.penalty);
-      
-      // Update player stats with reduced penalty
-      updatePlayerStats(result.winner, result.loser, result.penalty);
-      
-      // Send fold results to all players with current stakes info
-      io.to(gameId).emit('foldResult', {
-        loser: result.loser,
-        winner: result.winner,
-        penalty: result.penalty,
-        state: game.getGameState(),
-        baseStakeValue: game.baseStakeValue
-      });
-      
-      // Don't automatically start next round
-      logger.info(`Fold`, {
-        gameId,
-        playerId,
-        loser: result.loser.name,
-        winner: result.winner.name,
-        penalty: result.penalty
-      });
-    } else {
-      socket.emit('error', { message: result.message });
-      logger.error(`Fold failed - ${result.message}`, { gameId, playerId });
-    }
-  });
-  
-  // Open (challenge after Pi)
-  socket.on('open', ({ gameId, playerId }) => {
-    const game = activeGames[gameId];
-    
-    if (!game) {
-      socket.emit('error', { message: 'Game not found' });
-      logger.error(`Open failed - game not found`, { gameId, playerId });
-      return;
-    }
-    
-    if (!game.gameStarted) {
-      socket.emit('error', { message: 'Game not started yet' });
-      logger.error(`Open failed - game not started`, { gameId, playerId });
-      return;
-    }
-    
-    const result = game.open(playerId);
-    
-    if (result.success) {
-      // Update player scores in game
-      game.updatePlayerScore(result.winner.id, result.loser.id, game.stakes);
-      
-      // Update player stats with full stakes
-      updatePlayerStats(result.winner, result.loser, game.stakes);
-      
-      // Send open results to all players
-      io.to(gameId).emit('challengeResult', { 
-        challenger: game.players.find(p => p.id === playerId),
-        result: result,
-        allDice: game.dices,
-        baseStakeValue: game.baseStakeValue,
-        stakes: game.stakes
-      });
-      
-      // Don't automatically start next round
-      logger.info(`Open`, {
-        gameId,
-        challenger: playerId,
-        winner: result.winner.name,
-        loser: result.loser.name,
-        stakes: game.stakes
-      });
-    } else {
-      socket.emit('error', { message: result.message });
-      logger.error(`Open failed - ${result.message}`, { gameId, playerId });
-    }
-  });
-  
-  // Leave game
+  // Handle player leaving a game
   socket.on('leaveGame', ({ gameId, playerId }) => {
-    const game = activeGames[gameId];
-    
-    if (!game) {
-      return;
+    // Check if the game exists
+    if (!activeGames[gameId]) {
+      return; // Silently ignore if game doesn't exist
     }
     
+    // Get the game instance
+    const game = activeGames[gameId];
+    
+    // Remove the player
     if (game.removePlayer(playerId)) {
-      // Leave the socket room
-      socket.leave(gameId);
+      logger.info('Player left game', { gameId, playerId });
       
-      // If game is empty, remove it
-      if (game.players.length === 0) {
+      // If the game hasn't started and has no players left, clean it up
+      if (!game.gameStarted && game.players.length === 0) {
         delete activeGames[gameId];
-        delete gameOrigins[gameId];
-        logger.info(`Game removed - all players left`, { gameId });
-      } else {
-        // Notify other players
-        io.to(gameId).emit('playerLeft', { 
-          playerId,
-          state: game.getGameState()
-        });
+        logger.info('Game removed', { gameId });
+        return;
       }
       
-      logger.info(`Player left game`, { gameId, playerId });
+      // Notify other players
+      socket.to(gameId).emit('playerLeft', {
+        playerId,
+        state: game.getGameState()
+      });
     }
   });
   
-  // Disconnect handling
+  // Handle socket disconnect
   socket.on('disconnect', () => {
-    logger.info('User disconnected', { socketId: socket.id });
-    // Note: We would typically handle cleanup here,
-    // but without storing socket.id to playerId mapping,
-    // we'll rely on explicit leaveGame events
+    logger.info('Socket disconnected', { socketId: socket.id });
   });
 });
 
-// Parse game ID from URL parameter (for direct sharing)
-app.get('/', (req, res, next) => {
-  if (req.query.join && activeGames[req.query.join]) {
-    // Set a cookie to auto-join the game
-    res.cookie('joinGame', req.query.join, { maxAge: 60000 }); // 1 minute
-  }
-  next();
+// Default route for the web app
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
-
-// Helper function to generate a game ID
-function generateGameId() {
-  return Math.random().toString(36).substring(2, 10).toUpperCase();
-}
-
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
 
 // Start the server
 const PORT = process.env.PORT || 3000;
