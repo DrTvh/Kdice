@@ -103,6 +103,33 @@ function getCookie(name) {
   if (parts.length === 2) return parts.pop().split(';').shift();
 }
 
+// Helper functions for game state and UI
+function updateGameState(state, updateDice = true) {
+  // Only update dice if specified
+  if (updateDice && state.myDice) {
+    game.myDice = state.myDice;
+  }
+  
+  game.players = state.players || game.players;
+  game.currentPlayerIndex = state.currentPlayerIndex;
+  game.currentBid = state.currentBid;
+  game.stakes = state.stakes || game.stakes;
+  game.piCount = state.piCount || game.piCount;
+  game.baseStakeValue = state.baseStakeValue || game.baseStakeValue;
+  game.playerScores = state.playerScores || {};
+  game.round = state.round || game.round;
+  game.roundHistory = state.roundHistory || [];
+  game.gameEnded = state.gameEnded || false;
+  
+  // Check if it's my turn
+  if (game.currentPlayerIndex !== null) {
+    const currentPlayerId = game.players[game.currentPlayerIndex]?.id;
+    game.isMyTurn = currentPlayerId === game.playerId;
+  } else {
+    game.isMyTurn = false;
+  }
+}
+
 // Helper function to switch screens
 function showScreen(screenName) {
   Object.keys(screens).forEach(key => {
@@ -485,257 +512,315 @@ function updateBidValidity() {
   }
 }
 
-// Add event listeners for stake buttons
-document.querySelectorAll('.stake-button').forEach(button => {
-  button.addEventListener('click', () => {
-    const stake = parseInt(button.dataset.stake);
-    game.selectedStake = stake;
-    
-    // Update UI
-    document.querySelectorAll('.stake-button').forEach(btn => {
-      btn.classList.remove('selected');
+// Register event listeners after DOM has fully loaded
+document.addEventListener('DOMContentLoaded', function() {
+  // Add event listeners for stake buttons
+  document.querySelectorAll('.stake-button').forEach(button => {
+    button.addEventListener('click', () => {
+      const stake = parseInt(button.dataset.stake);
+      game.selectedStake = stake;
+      
+      // Update UI
+      document.querySelectorAll('.stake-button').forEach(btn => {
+        btn.classList.remove('selected');
+      });
+      button.classList.add('selected');
     });
-    button.classList.add('selected');
   });
-});
 
-// Add event listeners for tsi/fly buttons
-document.getElementById('tsiBtn').addEventListener('click', () => {
-  if (!game.isMyTurn) {
-    return; // Silently ignore if not your turn
-  }
-  
-  // Toggle TSI
-  if (game.isTsi) {
-    // Can't turn off TSI if value is 1
-    if (game.bidValue === 1) {
+  // Add event listeners for tsi/fly buttons
+  document.getElementById('tsiBtn').addEventListener('click', () => {
+    if (!game.isMyTurn) {
+      return; // Silently ignore if not your turn
+    }
+    
+    // Toggle TSI
+    if (game.isTsi) {
+      // Can't turn off TSI if value is 1
+      if (game.bidValue === 1) {
+        return;
+      }
+      game.isTsi = false;
+      document.getElementById('tsiBtn').classList.remove('selected');
+    } else {
+      game.isTsi = true;
+      game.isFly = false;
+      document.getElementById('tsiBtn').classList.add('selected');
+      document.getElementById('flyBtn').classList.remove('selected');
+    }
+    
+    // Update bid validity for Tsi/Fly
+    updateBidValidity();
+  });
+
+  document.getElementById('flyBtn').addEventListener('click', () => {
+    if (!game.isMyTurn) {
+      return; // Silently ignore if not your turn
+    }
+    
+    // FLY is only valid after a TSI bid or bid with value 1
+    if (!game.currentBid || !(game.currentBid.isTsi || game.currentBid.value === 1)) {
+      // Fly is not available without a preceding Tsi bid
       return;
     }
-    game.isTsi = false;
-    document.getElementById('tsiBtn').classList.remove('selected');
-  } else {
-    game.isTsi = true;
-    game.isFly = false;
-    document.getElementById('tsiBtn').classList.add('selected');
-    document.getElementById('flyBtn').classList.remove('selected');
-  }
-  
-  // Update bid validity for Tsi/Fly
-  updateBidValidity();
-});
-
-document.getElementById('flyBtn').addEventListener('click', () => {
-  if (!game.isMyTurn) {
-    return; // Silently ignore if not your turn
-  }
-  
-  // FLY is only valid after a TSI bid or bid with value 1
-  if (!game.currentBid || !(game.currentBid.isTsi || game.currentBid.value === 1)) {
-    // Fly is not available without a preceding Tsi bid
-    return;
-  }
-  
-  // Toggle FLY
-  if (game.isFly) {
-    game.isFly = false;
-    document.getElementById('flyBtn').classList.remove('selected');
-  } else {
-    game.isFly = true;
-    game.isTsi = false;
-    document.getElementById('flyBtn').classList.add('selected');
-    document.getElementById('tsiBtn').classList.remove('selected');
-  }
-  
-  // Update bid validity for Tsi/Fly
-  updateBidValidity();
-});
-
-// Add event listeners for Pi, Fold, Open buttons
-document.getElementById('piBtn').addEventListener('click', () => {
-  if (!game.isMyTurn) {
-    return; // Silently ignore if not your turn
-  }
-  
-  if (!game.currentBid) {
-    alert('No bid to raise stakes on!');
-    return;
-  }
-  
-  if (game.piCount >= 3) {
-    alert('Maximum Pi calls reached (8 points)! Use Fold or Open.');
-    return;
-  }
-  
-  // Double the stakes
-  socket.emit('pi', {
-    gameId: game.gameId,
-    playerId: game.playerId
+    
+    // Toggle FLY
+    if (game.isFly) {
+      game.isFly = false;
+      document.getElementById('flyBtn').classList.remove('selected');
+    } else {
+      game.isFly = true;
+      game.isTsi = false;
+      document.getElementById('flyBtn').classList.add('selected');
+      document.getElementById('tsiBtn').classList.remove('selected');
+    }
+    
+    // Update bid validity for Tsi/Fly
+    updateBidValidity();
   });
-  
-  game.isMyTurn = false;
-  updateGameControls();
-});
 
-document.getElementById('foldBtn').addEventListener('click', () => {
-  if (!game.isMyTurn) {
-    return; // Silently ignore if not your turn
-  }
-  
-  if (game.stakes === 1) {
-    alert('No Pi to fold on!');
-    return;
-  }
-  
-  socket.emit('fold', {
-    gameId: game.gameId,
-    playerId: game.playerId
-  });
-  
-  game.isMyTurn = false;
-  updateGameControls();
-});
-
-document.getElementById('openBtn').addEventListener('click', () => {
-  if (!game.isMyTurn) {
-    return; // Silently ignore if not your turn
-  }
-  
-  if (game.stakes === 1) {
-    alert('No Pi to open!');
-    return;
-  }
-  
-  socket.emit('open', {
-    gameId: game.gameId,
-    playerId: game.playerId
-  });
-  
-  game.isMyTurn = false;
-  updateGameControls();
-});
-
-// Create new game
-document.getElementById('createGameBtn').addEventListener('click', () => {
-  socket.emit('createGame', {
-    playerName: game.playerName,
-    playerId: game.playerId,
-    stakeValue: game.selectedStake
-  });
-});
-
-// Join existing game
-document.getElementById('joinGameBtn').addEventListener('click', () => {
-  const gameId = document.getElementById('gameIdInput').value.trim();
-  if (gameId) {
-    socket.emit('joinGame', {
-      gameId,
-      playerName: game.playerName,
+  // Add event listeners for Pi, Fold, Open buttons
+  document.getElementById('piBtn').addEventListener('click', () => {
+    if (!game.isMyTurn) {
+      return; // Silently ignore if not your turn
+    }
+    
+    if (!game.currentBid) {
+      alert('No bid to raise stakes on!');
+      return;
+    }
+    
+    if (game.piCount >= 3) {
+      alert('Maximum Pi calls reached (8 points)! Use Fold or Open.');
+      return;
+    }
+    
+    // Double the stakes
+    socket.emit('pi', {
+      gameId: game.gameId,
       playerId: game.playerId
     });
-  } else {
-    alert('Please enter a valid Game ID');
-  }
-});
-
-socket.on('gameEnded', ({ state, leaderboard, endedBy }) => {
-  game.gameEnded = true;
-  game.endedBy = endedBy;
-  
-  // Display leaderboard
-  const leaderboardElem = document.getElementById('leaderboardDisplay');
-  leaderboardElem.innerHTML = '<h3>Game Leaderboard</h3>';
-  
-  const leaderTable = document.createElement('table');
-  leaderTable.className = 'leaderboard-table';
-  
-  // Create table header
-  const header = document.createElement('tr');
-  header.innerHTML = `
-    <th>Player</th>
-    <th>Points</th>
-    <th>Money</th>
-    <th>W/L</th>
-  `;
-  leaderTable.appendChild(header);
-  
-  // Add each player
-  leaderboard.forEach(player => {
-    const row = document.createElement('tr');
-    const dollars = player.points * (state.baseStakeValue || 100);
-    const dollarsDisplay = dollars >= 0 ? `+${dollars}` : `-${Math.abs(dollars)}`;
     
-    row.innerHTML = `
-      <td>${player.name}${player.id === game.playerId ? ' (You)' : ''}</td>
-      <td>${player.points > 0 ? '+' : ''}${player.points}</td>
-      <td>${dollarsDisplay}</td>
-      <td>${player.wins}W/${player.losses}L</td>
-    `;
-    leaderTable.appendChild(row);
-  });
-  
-  leaderboardElem.appendChild(leaderTable);
-  
-  // Show different message based on who ended the game and if it was you
-  const gameEndText = document.getElementById('gameEndText');
-  const endedByName = game.players.find(p => p.id === endedBy)?.name || 'Unknown';
-  
-  if (endedBy === game.playerId) {
-    gameEndText.innerHTML = `
-      <p>You ended the game. Thanks for playing!</p>
-      <p>A full leaderboard has been posted to the group chat.</p>
-    `;
-  } else {
-    gameEndText.innerHTML = `
-      <p>${endedByName} ended the game. Thanks for playing!</p>
-      <p>A full leaderboard has been posted to the group chat.</p>
-    `;
-  }
-  
-  // Show game end screen
-  showScreen('gameEnd');
-});
-
-socket.on('playerLeft', ({ playerId, state }) => {
-  updateGameState(state, false);
-  
-  if (screens.lobby.classList.contains('active')) {
-    updateLobbyPlayerList();
-  } else {
-    updateGameUI();
-  }
-});
-
-socket.on('error', ({ message }) => {
-  alert(message);
-});
-
-// Helper functions
-function updateGameState(state, updateDice = true) {
-  // Only update dice if specified
-  if (updateDice && state.myDice) {
-    game.myDice = state.myDice;
-  }
-  
-  game.players = state.players || game.players;
-  game.currentPlayerIndex = state.currentPlayerIndex;
-  game.currentBid = state.currentBid;
-  game.stakes = state.stakes || game.stakes;
-  game.piCount = state.piCount || game.piCount;
-  game.baseStakeValue = state.baseStakeValue || game.baseStakeValue;
-  game.playerScores = state.playerScores || {};
-  game.round = state.round || game.round;
-  game.roundHistory = state.roundHistory || [];
-  game.gameEnded = state.gameEnded || false;
-  
-  // Check if it's my turn
-  if (game.currentPlayerIndex !== null) {
-    const currentPlayerId = game.players[game.currentPlayerIndex]?.id;
-    game.isMyTurn = currentPlayerId === game.playerId;
-  } else {
     game.isMyTurn = false;
-  }
-}
+    updateGameControls();
+  });
 
+  document.getElementById('foldBtn').addEventListener('click', () => {
+    if (!game.isMyTurn) {
+      return; // Silently ignore if not your turn
+    }
+    
+    if (game.stakes === 1) {
+      alert('No Pi to fold on!');
+      return;
+    }
+    
+    socket.emit('fold', {
+      gameId: game.gameId,
+      playerId: game.playerId
+    });
+    
+    game.isMyTurn = false;
+    updateGameControls();
+  });
+
+  document.getElementById('openBtn').addEventListener('click', () => {
+    if (!game.isMyTurn) {
+      return; // Silently ignore if not your turn
+    }
+    
+    if (game.stakes === 1) {
+      alert('No Pi to open!');
+      return;
+    }
+    
+    socket.emit('open', {
+      gameId: game.gameId,
+      playerId: game.playerId
+    });
+    
+    game.isMyTurn = false;
+    updateGameControls();
+  });
+
+  // Create new game
+  document.getElementById('createGameBtn').addEventListener('click', () => {
+    socket.emit('createGame', {
+      playerName: game.playerName,
+      playerId: game.playerId,
+      stakeValue: game.selectedStake
+    });
+  });
+
+  // Join existing game
+  document.getElementById('joinGameBtn').addEventListener('click', () => {
+    const gameId = document.getElementById('gameIdInput').value.trim();
+    if (gameId) {
+      socket.emit('joinGame', {
+        gameId,
+        playerName: game.playerName,
+        playerId: game.playerId
+      });
+    } else {
+      alert('Please enter a valid Game ID');
+    }
+  });
+
+  // Start game
+  document.getElementById('startGameBtn').addEventListener('click', () => {
+    socket.emit('startGame', {
+      gameId: game.gameId,
+      playerId: game.playerId
+    });
+  });
+
+  // Handle "Next Round" button
+  document.getElementById('nextRoundBtn').addEventListener('click', () => {
+    socket.emit('startNextRound', {
+      gameId: game.gameId
+    });
+  });
+
+  // Handle "End Game" button
+  document.getElementById('endGameBtn').addEventListener('click', () => {
+    socket.emit('endGame', {
+      gameId: game.gameId,
+      playerId: game.playerId
+    });
+  });
+
+  // Return to home screen
+  document.getElementById('returnHomeBtn').addEventListener('click', () => {
+    window.location.href = '/'; // Reload the page to start fresh
+  });
+
+  // Close app button (for game end screen)
+  document.getElementById('closeAppBtn').addEventListener('click', () => {
+    tgApp.close();
+  });
+
+  // Leave lobby
+  document.getElementById('leaveLobbyBtn').addEventListener('click', () => {
+    socket.emit('leaveGame', {
+      gameId: game.gameId,
+      playerId: game.playerId
+    });
+    game.gameId = null;
+    showScreen('welcome');
+  });
+
+  // Leave game
+  document.getElementById('leaveGameBtn').addEventListener('click', () => {
+    socket.emit('leaveGame', {
+      gameId: game.gameId,
+      playerId: game.playerId
+    });
+    game.gameId = null;
+    showScreen('welcome');
+  });
+
+  // Place bid
+  document.getElementById('bidBtn').addEventListener('click', () => {
+    if (!game.isMyTurn) {
+      return; // Silently ignore if not your turn
+    }
+    
+    // Make sure value=1 is always Tsi mode
+    if (game.bidValue === 1) {
+      game.isTsi = true;
+    }
+    
+    // Validate bid against current bid
+    if (game.currentBid) {
+      let isValidBid = false;
+      
+      // Check if previous bid is in TSI mode (either explicitly or with value 1)
+      const previousIsTSI = game.currentBid.isTsi || game.currentBid.value === 1;
+      
+      if (game.isTsi) {
+        if (previousIsTSI) {
+          // Tsi after Tsi: must be higher count or same count but higher value
+          isValidBid = 
+            (game.bidCount > game.currentBid.count) || 
+            (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
+        } else {
+          // Tsi after regular bid: can be equal or higher count with any value
+          isValidBid = game.bidCount >= game.currentBid.count;
+        }
+      }
+      else if (game.isFly) {
+        // Fly after any bid: must double the count
+        const minCount = game.currentBid.count * 2;
+        isValidBid = game.bidCount >= minCount;
+      }
+      else if (previousIsTSI) {
+        // Must specify tsi or fly after a tsi bid
+        alert('After a Tsi (-) bid or a bid with 1s, you must choose Tsi (-) or Fly (+)!');
+        return;
+      }
+      else {
+        // Regular bid: must be higher count or same count but higher value
+        isValidBid = 
+          (game.bidCount > game.currentBid.count) || 
+          (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
+      }
+      
+      if (!isValidBid) {
+        if (game.isTsi) {
+          alert(`Tsi bid must be at least ${game.currentBid.count} dice!`);
+        } else if (game.isFly) {
+          alert(`Fly bid must double count to at least ${game.currentBid.count * 2}!`);
+        } else {
+          alert(`Your bid must be higher than ${game.currentBid.count} ${game.currentBid.value}'s`);
+        }
+        return;
+      }
+    }
+    
+    socket.emit('placeBid', {
+      gameId: game.gameId,
+      playerId: game.playerId,
+      count: game.bidCount,
+      value: game.bidValue,
+      isTsi: game.isTsi || game.bidValue === 1, // Always Tsi if value is 1
+      isFly: game.isFly
+    });
+    
+    // Reset bid controls to slightly higher than current bid
+    game.isMyTurn = false;
+    updateGameControls();
+  });
+
+  // Challenge bid
+  document.getElementById('challengeBtn').addEventListener('click', () => {
+    if (!game.isMyTurn) {
+      return; // Silently ignore if not your turn
+    }
+    
+    if (!game.currentBid) {
+      alert('There is no bid to challenge yet!');
+      return;
+    }
+    
+    // Send appropriate event based on stakes
+    if (game.stakes > 1) {
+      socket.emit('open', {
+        gameId: game.gameId,
+        playerId: game.playerId
+      });
+    } else {
+      socket.emit('challenge', {
+        gameId: game.gameId,
+        playerId: game.playerId
+      });
+    }
+    
+    game.isMyTurn = false;
+    updateGameControls();
+  });
+});
+
+// Helper functions for UI updates
 function updateLobbyPlayerList() {
   const playerList = document.getElementById('lobbyPlayerList');
   playerList.innerHTML = '';
@@ -931,7 +1016,7 @@ function updateGameControls() {
     
     // Hide Pi mode controls
     piBtn.style.display = 'none';
-    foldBtn.style.display = 'none';
+    foldBtn.style.display = 'block';
     openBtn.style.display = 'none';
     
     return;
@@ -961,9 +1046,9 @@ function updateGameControls() {
       piBtn.style.display = 'none';
     }
     
-    // Show Fold with penalty amount
+    // Show Fold with penalty amount - Always show after first Pi
     foldBtn.textContent = `Fold (-${foldPenalty}p)`;
-    foldBtn.style.display = 'block';
+    foldBtn.style.display = 'block'; // Always show fold button when stakes > 1
     
     // Show Open button
     openBtn.style.display = 'none'; // Use challengeBtn instead (renamed to "Open!")
@@ -997,31 +1082,92 @@ function updateGameControls() {
   updateBidValidity();
 }
 
-// Apply Telegram theme if available
-if (tgApp.colorScheme === 'dark') {
-  document.documentElement.style.setProperty('--tg-theme-bg-color', '#212121');
-  document.documentElement.style.setProperty('--tg-theme-text-color', '#ffffff');
-  document.documentElement.style.setProperty('--tg-theme-hint-color', '#aaaaaa');
-  document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', '#2c2c2c');
-}
+// Socket.io event handlers
+socket.on('gameCreated', ({ gameId, state }) => {
+  game.gameId = gameId;
+  updateGameState(state);
+  
+  // Display the game ID for sharing
+  document.getElementById('gameIdDisplay').textContent = gameId;
+  
+  // Update lobby player list
+  updateLobbyPlayerList();
+  
+  // Switch to lobby screen
+  showScreen('lobby');
+});
 
-// Handle theme changes from Telegram
-tgApp.onEvent('themeChanged', () => {
-  if (tgApp.colorScheme === 'dark') {
-    document.documentElement.style.setProperty('--tg-theme-bg-color', '#212121');
-    document.documentElement.style.setProperty('--tg-theme-text-color', '#ffffff');
-    document.documentElement.style.setProperty('--tg-theme-hint-color', '#aaaaaa');
-    document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', '#2c2c2c');
+socket.on('gameJoined', ({ gameId, state, alreadyJoined }) => {
+  game.gameId = gameId;
+  updateGameState(state);
+  
+  // Update lobby player list
+  updateLobbyPlayerList();
+  
+  // Show notification if we were already in the game
+  if (alreadyJoined) {
+    alert("You're already in this game!");
+  }
+  
+  // Switch to lobby screen
+  showScreen('lobby');
+});
+
+socket.on('playerJoined', ({ player, state }) => {
+  updateGameState(state);
+  updateLobbyPlayerList();
+  
+  // Optionally show a notification
+  tgApp.HapticFeedback.notificationOccurred('success');
+});
+
+socket.on('playerLeft', ({ playerId, state }) => {
+  updateGameState(state, false);
+  
+  if (screens.lobby.classList.contains('active')) {
+    updateLobbyPlayerList();
   } else {
-    document.documentElement.style.setProperty('--tg-theme-bg-color', '#ffffff');
-    document.documentElement.style.setProperty('--tg-theme-text-color', '#000000');
-    document.documentElement.style.setProperty('--tg-theme-hint-color', '#999999');
-    document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', '#f1f1f1');
+    updateGameUI();
   }
 });
 
-// Check for game join parameter when the page loads
-window.addEventListener('load', checkForGameJoin);
+socket.on('error', ({ message }) => {
+  alert(message);
+});
+
+socket.on('gameUpdate', ({ state }) => {
+  // Update general game state (without dice)
+  updateGameState(state, false);
+  updateGameUI();
+});
+
+socket.on('bidPlaced', ({ player, bid, state, nextPlayerId }) => {
+  // Add to bid history
+  game.bidHistory.push({
+    playerName: player.name,
+    count: bid.count,
+    value: bid.value,
+    isTsi: bid.isTsi || bid.value === 1, // Track bids of 1s as TSI
+    isFly: bid.isFly
+  });
+  
+  // Update UI
+  updateBidHistory();
+  
+  // Update current bid
+  game.currentBid = bid;
+  
+  // Update current bid display
+  updateCurrentBidDisplay();
+  
+  // Update general game state (without dice)
+  updateGameState(state, false);
+  
+  // Explicitly check if it's my turn now
+  game.isMyTurn = nextPlayerId === game.playerId;
+  
+  updateGameUI();
+});
 
 socket.on('challengeResult', ({ challenger, result, allDice, baseStakeValue, stakes }) => {
   // Show the round summary instead of challenge results
@@ -1172,198 +1318,6 @@ socket.on('roundStarted', ({ state, playerId, round }) => {
   }
 });
 
-// Start game
-document.getElementById('startGameBtn').addEventListener('click', () => {
-  socket.emit('startGame', {
-    gameId: game.gameId,
-    playerId: game.playerId
-  });
-});
-
-// Handle "Next Round" button
-document.getElementById('nextRoundBtn').addEventListener('click', () => {
-  socket.emit('startNextRound', {
-    gameId: game.gameId
-  });
-});
-
-// Handle "End Game" button
-document.getElementById('endGameBtn').addEventListener('click', () => {
-  socket.emit('endGame', {
-    gameId: game.gameId,
-    playerId: game.playerId
-  });
-});
-
-// Return to home screen
-document.getElementById('returnHomeBtn').addEventListener('click', () => {
-  window.location.href = '/'; // Reload the page to start fresh
-});
-
-// Close app button (for game end screen)
-document.getElementById('closeAppBtn').addEventListener('click', () => {
-  tgApp.close();
-});
-
-// Leave lobby
-document.getElementById('leaveLobbyBtn').addEventListener('click', () => {
-  socket.emit('leaveGame', {
-    gameId: game.gameId,
-    playerId: game.playerId
-  });
-  game.gameId = null;
-  showScreen('welcome');
-});
-
-// Leave game
-document.getElementById('leaveGameBtn').addEventListener('click', () => {
-  socket.emit('leaveGame', {
-    gameId: game.gameId,
-    playerId: game.playerId
-  });
-  game.gameId = null;
-  showScreen('welcome');
-});
-
-// Place bid
-document.getElementById('bidBtn').addEventListener('click', () => {
-  if (!game.isMyTurn) {
-    return; // Silently ignore if not your turn
-  }
-  
-  // Make sure value=1 is always Tsi mode
-  if (game.bidValue === 1) {
-    game.isTsi = true;
-  }
-  
-  // Validate bid against current bid
-  if (game.currentBid) {
-    let isValidBid = false;
-    
-    // Check if previous bid is in TSI mode (either explicitly or with value 1)
-    const previousIsTSI = game.currentBid.isTsi || game.currentBid.value === 1;
-    
-    if (game.isTsi) {
-      if (previousIsTSI) {
-        // Tsi after Tsi: must be higher count or same count but higher value
-        isValidBid = 
-          (game.bidCount > game.currentBid.count) || 
-          (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
-      } else {
-        // Tsi after regular bid: can be equal or higher count with any value
-        isValidBid = game.bidCount >= game.currentBid.count;
-      }
-    }
-    else if (game.isFly) {
-      // Fly after any bid: must double the count
-      const minCount = game.currentBid.count * 2;
-      isValidBid = game.bidCount >= minCount;
-    }
-    else if (previousIsTSI) {
-      // Must specify tsi or fly after a tsi bid
-      alert('After a Tsi (-) bid or a bid with 1s, you must choose Tsi (-) or Fly (+)!');
-      return;
-    }
-    else {
-      // Regular bid: must be higher count or same count but higher value
-      isValidBid = 
-        (game.bidCount > game.currentBid.count) || 
-        (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
-    }
-    
-    if (!isValidBid) {
-      if (game.isTsi) {
-        alert(`Tsi bid must be at least ${game.currentBid.count} dice!`);
-      } else if (game.isFly) {
-        alert(`Fly bid must double count to at least ${game.currentBid.count * 2}!`);
-      } else {
-        alert(`Your bid must be higher than ${game.currentBid.count} ${game.currentBid.value}'s`);
-      }
-      return;
-    }
-  }
-  
-  socket.emit('placeBid', {
-    gameId: game.gameId,
-    playerId: game.playerId,
-    count: game.bidCount,
-    value: game.bidValue,
-    isTsi: game.isTsi || game.bidValue === 1, // Always Tsi if value is 1
-    isFly: game.isFly
-  });
-  
-  // Reset bid controls to slightly higher than current bid
-  game.isMyTurn = false;
-  updateGameControls();
-});
-
-// Challenge bid
-document.getElementById('challengeBtn').addEventListener('click', () => {
-  if (!game.isMyTurn) {
-    return; // Silently ignore if not your turn
-  }
-  
-  if (!game.currentBid) {
-    alert('There is no bid to challenge yet!');
-    return;
-  }
-  
-  // Send appropriate event based on stakes
-  if (game.stakes > 1) {
-    socket.emit('open', {
-      gameId: game.gameId,
-      playerId: game.playerId
-    });
-  } else {
-    socket.emit('challenge', {
-      gameId: game.gameId,
-      playerId: game.playerId
-    });
-  }
-  
-  game.isMyTurn = false;
-  updateGameControls();
-});
-
-// Socket.io event handlers
-socket.on('gameCreated', ({ gameId, state }) => {
-  game.gameId = gameId;
-  updateGameState(state);
-  
-  // Display the game ID for sharing
-  document.getElementById('gameIdDisplay').textContent = gameId;
-  
-  // Update lobby player list
-  updateLobbyPlayerList();
-  
-  // Switch to lobby screen
-  showScreen('lobby');
-});
-
-socket.on('gameJoined', ({ gameId, state, alreadyJoined }) => {
-  game.gameId = gameId;
-  updateGameState(state);
-  
-  // Update lobby player list
-  updateLobbyPlayerList();
-  
-  // Show notification if we were already in the game
-  if (alreadyJoined) {
-    alert("You're already in this game!");
-  }
-  
-  // Switch to lobby screen
-  showScreen('lobby');
-});
-
-socket.on('playerJoined', ({ player, state }) => {
-  updateGameState(state);
-  updateLobbyPlayerList();
-  
-  // Optionally show a notification
-  tgApp.HapticFeedback.notificationOccurred('success');
-});
-
 socket.on('gameStarted', ({ state, playerId }) => {
   // Only update if this event is for me
   if (playerId === game.playerId) {
@@ -1376,6 +1330,8 @@ socket.on('gameStarted', ({ state, playerId }) => {
     initializeBidButtons();
     
     updateGameUI();
+    showScreen('game');
+  }
 });
 
 socket.on('piCalled', ({ player, newStakes, piCount, state }) => {
@@ -1419,39 +1375,77 @@ socket.on('yourTurn', ({ state, playerId }) => {
     tgApp.HapticFeedback.notificationOccurred('success');
   }
 });
-    showScreen('game');
-  }
-});
 
-socket.on('gameUpdate', ({ state }) => {
-  // Update general game state (without dice)
-  updateGameState(state, false);
-  updateGameUI();
-});
-
-socket.on('bidPlaced', ({ player, bid, state, nextPlayerId }) => {
-  // Add to bid history
-  game.bidHistory.push({
-    playerName: player.name,
-    count: bid.count,
-    value: bid.value,
-    isTsi: bid.isTsi || bid.value === 1, // Track bids of 1s as TSI
-    isFly: bid.isFly
+socket.on('gameEnded', ({ state, leaderboard, endedBy }) => {
+  game.gameEnded = true;
+  game.endedBy = endedBy;
+  
+  // Display leaderboard
+  const leaderboardElem = document.getElementById('leaderboardDisplay');
+  leaderboardElem.innerHTML = '<h3>Game Leaderboard</h3>';
+  
+  const leaderTable = document.createElement('table');
+  leaderTable.className = 'leaderboard-table';
+  
+  // Create table header
+  const header = document.createElement('tr');
+  header.innerHTML = `
+    <th>Player</th>
+    <th>Points</th>
+    <th>Money</th>
+    <th>W/L</th>
+  `;
+  leaderTable.appendChild(header);
+  
+  // Add each player
+  leaderboard.forEach(player => {
+    const row = document.createElement('tr');
+    const dollars = player.points * (state.baseStakeValue || 100);
+    const dollarsDisplay = dollars >= 0 ? `+${dollars}` : `-${Math.abs(dollars)}`;
+    
+    row.innerHTML = `
+      <td>${player.name}${player.id === game.playerId ? ' (You)' : ''}</td>
+      <td>${player.points > 0 ? '+' : ''}${player.points}</td>
+      <td>${dollarsDisplay}</td>
+      <td>${player.wins}W/${player.losses}L</td>
+    `;
+    leaderTable.appendChild(row);
   });
   
-  // Update UI
-  updateBidHistory();
+  leaderboardElem.appendChild(leaderTable);
   
-  // Update current bid
-  game.currentBid = bid;
+  // Show different message based on who ended the game and if it was you
+  const gameEndText = document.getElementById('gameEndText');
+  const endedByName = game.players.find(p => p.id === endedBy)?.name || 'Unknown';
   
-  // Update current bid display
-  updateCurrentBidDisplay();
+  if (endedBy === game.playerId) {
+    gameEndText.innerHTML = `
+      <p>You ended the game. Thanks for playing!</p>
+      <p>A full leaderboard has been posted to the group chat.</p>
+    `;
+  } else {
+    gameEndText.innerHTML = `
+      <p>${endedByName} ended the game. Thanks for playing!</p>
+      <p>A full leaderboard has been posted to the group chat.</p>
+    `;
+  }
   
-  // Update general game state (without dice)
-  updateGameState(state, false);
+  // Show game end screen
+  showScreen('gameEnd');
+
+  // Initialize the game interface once DOM is fully loaded
+document.addEventListener('DOMContentLoaded', function() {
+  // Check for game join parameter
+  checkForGameJoin();
   
-  // Explicitly check if it's my turn now
-  game.isMyTurn = nextPlayerId === game.playerId;
-  
-  updateGameUI();
+  // Initialize event listeners for all buttons
+  initializeEventListeners();
+});
+
+// Move all button event listeners to this function
+function initializeEventListeners() {
+  // All your button event listeners go here
+  document.getElementById('createGameBtn').addEventListener('click', ...);
+  document.getElementById('joinGameBtn').addEventListener('click', ...);
+  // etc.
+}

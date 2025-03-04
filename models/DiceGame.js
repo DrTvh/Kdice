@@ -129,11 +129,6 @@ class DiceGame {
     if (playerId !== this.getCurrentPlayer().id) {
       return { success: false, message: "Not your turn" };
     }
-
-    // The value of 1 in a bid is always TSI mode
-    if (value === 1) {
-      isTsi = true;
-    }
     
     // First bid of the game
     if (this.currentBid === null) {
@@ -147,24 +142,27 @@ class DiceGame {
     // Validate bid based on type
     let isValidBid = false;
     
-    // Check if previous bid was TSI or had value 1 (special case)
-    const previousIsTSI = this.currentBid.isTsi || this.currentBid.value === 1;
-    
     if (isTsi) {
-      if (previousIsTSI) {
+      if (this.currentBid && this.currentBid.isTsi) {
         // Tsi after Tsi: must be higher count or same count but higher value
         isValidBid = 
           (count > this.currentBid.count) || 
           (count === this.currentBid.count && value > this.currentBid.value);
-      } else {
+      } else if (this.currentBid) {
         // TSI after regular bid: can be equal or higher count with any value
+        // Fix: Allow TSI with same count but different value after a regular bid
         isValidBid = count >= this.currentBid.count;
+      } else {
+        // First bid of the game
+        isValidBid = true;
       }
     }
     else if (isFly) {
-      // Fly after TSI: must double the count
-      if (previousIsTSI) {
-        const minCount = this.currentBid.count * 2;
+      // Fly after any bid: must double the count
+      const minCount = this.currentBid ? this.currentBid.count * 2 : 1;
+      
+      // FLY after TSI: double count required and if same count, higher value after TSI
+      if (this.currentBid && this.currentBid.isTsi) {
         isValidBid = count >= minCount;
       } else {
         // Not valid to do FLY after a non-TSI bid
@@ -174,16 +172,17 @@ class DiceGame {
         };
       }
     }
-    else if (previousIsTSI) {
-      // Must specify Tsi or Fly after a Tsi bid or a bid with 1s
+    else if (this.currentBid && this.currentBid.isTsi) {
+      // Must specify tsi or fly after a tsi bid
       return { 
         success: false, 
-        message: "After a Tsi (-) bid or a bid with 1s, you must choose Tsi (-) or Fly (+)!" 
+        message: "After a Tsi (-) bid, you must choose Tsi (-) or Fly (+)!" 
       };
     }
     else {
       // Regular bid: must be higher count or same count but higher value
       isValidBid = 
+        !this.currentBid || 
         (count > this.currentBid.count) || 
         (count === this.currentBid.count && value > this.currentBid.value);
     }
@@ -364,11 +363,7 @@ class DiceGame {
           id: playerId,
           name: player ? player.name : 'Unknown',
           points: this.playerScores[playerId],
-          dollars: this.playerScores[playerId] * this.baseStakeValue,
-          // Count wins and losses
-          wins: this.roundHistory.filter(r => r.winner === playerId).length,
-          losses: this.roundHistory.filter(r => r.loser === playerId).length,
-          rounds: this.roundHistory.filter(r => r.winner === playerId || r.loser === playerId).length
+          dollars: this.playerScores[playerId] * this.baseStakeValue
         };
       })
       .sort((a, b) => b.points - a.points);
@@ -409,9 +404,9 @@ class DiceGame {
     return Math.floor(this.stakes / 2);
   }
   
-  // Helper to determine if Fly is available - after a Tsi bid or bid with value 1
+  // Helper to determine if Fly is available - only after a Tsi bid
   isFlyAvailable() {
-    return this.currentBid && (this.currentBid.isTsi || this.currentBid.value === 1);
+    return this.currentBid && this.currentBid.isTsi;
   }
   
   // Get the current Pi button label based on Pi count
@@ -441,26 +436,6 @@ class DiceGame {
     return (
       this.currentPlayerIndex !== null &&
       this.players[this.currentPlayerIndex]?.id === playerId &&
-      this.currentBid.player !== playerId
-    );
-  }
-
-  // Helper to determine if UI should be in TSI mode
-  isTsiMode() {
-    return this.currentBid && (this.currentBid.isTsi || this.currentBid.value === 1);
-  }
-  
-  // Helper to determine if Fold button should be visible
-  isFoldAvailable(playerId) {
-    // Fold is available when:
-    // 1. Stakes > 1 (at least one Pi has been called)
-    // 2. It's this player's turn
-    // 3. This player is responding to a Pi (didn't make the last bid)
-    return (
-      this.stakes > 1 &&
-      this.currentPlayerIndex !== null &&
-      this.players[this.currentPlayerIndex]?.id === playerId &&
-      this.currentBid && 
       this.currentBid.player !== playerId
     );
   }
