@@ -6,7 +6,7 @@ const path = require('path');
 const { Server } = require('socket.io');
 const http = require('http');
 const dotenv = require('dotenv');
-const TelegramBot = require('node-telegram-bot-api'); // New dependency
+const TelegramBot = require('node-telegram-bot-api');
 
 // Setup environment variables
 dotenv.config();
@@ -15,6 +15,9 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
+
+// Add JSON body parser middleware
+app.use(express.json());
 
 // Initialize Telegram Bot with webhook
 const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
@@ -319,7 +322,7 @@ class DiceGame {
       currentBid: this.currentBid,
       round: this.round,
       lastRoundLoser: this.lastRoundLoser,
-      stalks: this.stakes,
+      stakes: this.stakes,
       piCount: this.piCount,
       baseStakeValue: this.baseStakeValue
     };
