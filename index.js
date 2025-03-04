@@ -6,6 +6,7 @@ const path = require('path');
 const { Server } = require('socket.io');
 const http = require('http');
 const dotenv = require('dotenv');
+const TelegramBot = require('node-telegram-bot-api'); // New dependency
 
 // Setup environment variables
 dotenv.config();
@@ -15,10 +16,33 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// Initialize Telegram Bot with webhook
+const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
+const webhookPath = `/bot${process.env.BOT_TOKEN}`;
+bot.setWebHook(`https://kdice.onrender.com${webhookPath}`); // Set webhook to Render URL
+
+// Handle Telegram updates via POST
+app.post(webhookPath, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+// Respond to /start command
+bot.onText(/\/start/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, "Welcome to Kdice! Click below to play:", {
+    reply_markup: {
+      inline_keyboard: [[
+        { text: "Play Kdice", web_app: { url: "https://kdice.onrender.com" } }
+      ]]
+    }
+  });
+});
+
 // Game state storage - maps gameIds to game instances
 const activeGames = {};
 
-// Game logic
+// Game logic (unchanged)
 class DiceGame {
   constructor(gameId) {
     this.gameId = gameId;
@@ -295,7 +319,7 @@ class DiceGame {
       currentBid: this.currentBid,
       round: this.round,
       lastRoundLoser: this.lastRoundLoser,
-      stakes: this.stakes,
+      stalks: this.stakes,
       piCount: this.piCount,
       baseStakeValue: this.baseStakeValue
     };
