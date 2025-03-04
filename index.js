@@ -40,15 +40,33 @@ app.use(express.json());
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Initialize Telegram Bot with webhook
-const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
-const webhookPath = `/bot${process.env.BOT_TOKEN}`;
-bot.setWebHook(`https://kdice.onrender.com${webhookPath}`); // Set webhook to Render URL
+// Initialize Telegram Bot with webhook (Polling is more reliable for development)
+let bot;
 
-// Handle Telegram updates via POST
-app.post(webhookPath, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
+if (process.env.NODE_ENV === 'production') {
+  // Use webhook in production
+  bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
+  const webhookPath = `/bot${process.env.BOT_TOKEN}`;
+  bot.setWebHook(`https://kdice.onrender.com${webhookPath}`);
+  
+  // Handle Telegram updates via POST
+  app.post(webhookPath, (req, res) => {
+    bot.processUpdate(req.body);
+    res.sendStatus(200);
+  });
+  
+  logger.info('Bot initialized with webhook');
+} else {
+  // Use polling in development
+  bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+  logger.info('Bot initialized with polling');
+}
+
+// Print bot info
+bot.getMe().then(botInfo => {
+  logger.info(`Bot started! @${botInfo.username}`);
+}).catch(error => {
+  logger.error('Error getting bot info', error);
 });
 
 // Helper function to generate a random game ID
@@ -99,7 +117,7 @@ function getRulesText() {
 
 *Bidding Types*:
 - *Regular Bid*: "3 fours" means at least 3 dice showing 4 (or 1 as joker)
-- *Tsi (-)*: Only counts exact value, not jokers. "3 fours-" means exactly 3 dice showing 4
+- *Tsi (-)* (or bids of 1s): Only counts exact values, not jokers. "3 fours-" means exactly 3 dice showing 4
 - *Fly (+)*: After Tsi, you must double the count, but can pick any value
 
 *Raising Stakes*:
@@ -141,13 +159,14 @@ bot.on('message', (msg) => {
     msgText: msg.text, 
     chatType: msg.chat.type,
     chatId: msg.chat.id,
-    from: msg.from.username || msg.from.first_name
+    from: msg.from?.username || msg.from?.first_name || 'Unknown'
   });
   
   // Check if bot was mentioned
-  const botMention = `@${bot.getMe().then(botInfo => botInfo.username).catch(() => 'KdiceBot')}`;
-  
-  if (msg.text && msg.text.includes(botMention)) {
+  if (msg.text && msg.entities && msg.entities.some(entity => 
+    entity.type === 'mention' && 
+    msg.text.substring(entity.offset, entity.offset + entity.length).includes('@') 
+  )) {
     bot.sendMessage(msg.chat.id, getHelpText(), { parse_mode: 'Markdown' });
     return;
   }
@@ -165,7 +184,8 @@ bot.on('message', (msg) => {
           inline_keyboard: [[
             { text: "Play Kdice", web_app: { url: "https://kdice.onrender.com" } }
           ]]
-        }
+        },
+        parse_mode: 'Markdown'
       });
     }
   }
@@ -629,6 +649,11 @@ io.on('connection', (socket) => {
     // Get the game instance
     const game = activeGames[gameId];
     
+    // If the bid value is 1, it's automatically TSI mode
+    if (value === 1) {
+      isTsi = true;
+    }
+    
     // Place the bid
     const result = game.placeBid(playerId, count, value, isTsi, isFly);
     
@@ -856,7 +881,7 @@ io.on('connection', (socket) => {
   });
   
   // Handle ending the game
-  socket.on('endGame', ({ gameId }) => {
+  socket.on('endGame', ({ gameId, playerId }) => {
     // Check if the game exists
     if (!activeGames[gameId]) {
       socket.emit('error', { message: 'Game not found' });
@@ -874,12 +899,13 @@ io.on('connection', (socket) => {
       return;
     }
     
-    logger.info('Game ended', { gameId });
+    logger.info('Game ended', { gameId, endedBy: playerId });
     
     // Notify all players
     io.to(gameId).emit('gameEnded', {
       state: game.getGameState(),
-      leaderboard: result.leaderboard
+      leaderboard: result.leaderboard,
+      endedBy: playerId
     });
     
     // Post leaderboard to group chat if from there
