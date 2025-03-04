@@ -881,38 +881,37 @@ io.on('connection', (socket) => {
   });
   
   // Handle ending the game
-  socket.on('endGame', ({ gameId, playerId }) => {
-    // Check if the game exists
-    if (!activeGames[gameId]) {
-      socket.emit('error', { message: 'Game not found' });
-      return;
-    }
-    
-    // Get the game instance
-    const game = activeGames[gameId];
-    
-    // End the game
-    const result = game.endGame();
-    
-    if (!result.success) {
-      socket.emit('error', { message: 'Failed to end game' });
-      return;
-    }
-    
-    logger.info('Game ended', { gameId, endedBy: playerId });
-    
-    // Notify all players
-    io.to(gameId).emit('gameEnded', {
-      state: game.getGameState(),
-      leaderboard: result.leaderboard,
-      endedBy: playerId
-    });
-    
-    // Post leaderboard to group chat if from there
-    if (game.originChatId) {
-      postLeaderboard(gameId);
-    }
+socket.on('endGame', ({ gameId }) => {
+  // Check if the game exists
+  if (!activeGames[gameId]) {
+    socket.emit('error', { message: 'Game not found' });
+    return;
+  }
+  
+  // Get the game instance
+  const game = activeGames[gameId];
+  
+  // End the game
+  const result = game.endGame();
+  
+  if (!result.success) {
+    socket.emit('error', { message: 'Failed to end game' });
+    return;
+  }
+  
+  logger.info('Game ended', { gameId });
+  
+  // Notify all players
+  io.to(gameId).emit('gameEnded', {
+    state: game.getGameState(),
+    leaderboard: result.leaderboard
   });
+  
+  // Post leaderboard to group chat if from there
+  if (game.originChatId) {
+    postLeaderboard(gameId);
+  }
+});
   
   // Handle player leaving a game
   socket.on('leaveGame', ({ gameId, playerId }) => {
