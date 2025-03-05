@@ -631,12 +631,8 @@ document.getElementById('leaveLobbyBtn').addEventListener('click', () => {
 
 // Leave game
 document.getElementById('leaveGameBtn').addEventListener('click', () => {
-  socket.emit('leaveGame', {
-    gameId: game.gameId,
-    playerId: game.playerId
-  });
-  game.gameId = null;
-  showScreen('welcome');
+  socket.emit('leaveGame', { gameId: game.gameId, playerId: game.playerId });
+  // Wait for server to emit 'gameEnded' or 'foldResult' followed by 'gameEnded'
 });
 
 // Place bid
@@ -648,41 +644,51 @@ document.getElementById('bidBtn').addEventListener('click', () => {
     document.getElementById('tsiBtn').classList.add('selected');
   }
   
-  if (game.currentBid) {
-    let isValidBid = false;
+  document.getElementById('bidBtn').addEventListener('click', () => {
+    if (!game.isMyTurn) return;
     
-    if (game.currentBid.isTsi && !game.currentBid.isFly) { // Includes value === 1 since TSI is forced
-      if (!game.isTsi && !game.isFly) return alert('After a Tsi (-) bid, you must choose Tsi (-) or Fly (+)!');
-      if (game.isTsi) {
-        isValidBid = (game.bidCount > game.currentBid.count) || 
-                     (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
-      } else if (game.isFly) {
-        const minCount = game.currentBid.count * 2;
-        isValidBid = game.bidCount >= minCount;
-        if (!isValidBid) return alert(`Fly bid must double count to at least ${minCount}!`);
+    if (game.bidValue === 1 && !game.isTsi) {
+      game.isTsi = true;
+      document.getElementById('tsiBtn').classList.add('selected');
+    }
+    
+    if (game.currentBid) {
+      let isValidBid = false;
+      
+      if (game.currentBid.isTsi && !game.currentBid.isFly) {
+        if (!game.isTsi && !game.isFly) return alert('After a Tsi (-) bid, you must choose Tsi (-) or Fly (+)!');
+        if (game.isTsi) {
+          isValidBid = (game.bidCount > game.currentBid.count) || 
+                       (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
+        } else if (game.isFly) {
+          const minCount = game.currentBid.count * 2;
+          isValidBid = game.bidCount >= minCount;
+          if (!isValidBid) return alert(`Fly bid must double count to at least ${minCount}!`);
+        }
+      } else {
+        if (game.isTsi) {
+          isValidBid = game.bidCount >= game.currentBid.count; // Allow same count, any value for TSI
+        } else {
+          isValidBid = (game.bidCount > game.currentBid.count) || 
+                       (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
+        }
+      }
+      
+      if (!isValidBid) {
+        if (game.isTsi) return alert(`Tsi bid must be at least ${game.currentBid.count} dice!`);
+        if (game.isFly) return alert(`Fly bid must double count to at least ${game.currentBid.count * 2}!`);
+        return alert(`Your bid must be higher than ${game.currentBid.count} ${game.currentBid.value}'s`);
       }
     } else {
-      isValidBid = (game.bidCount > game.currentBid.count) || 
-                   (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
-      if (!game.isTsi && !game.isFly) {
-        return alert('After exiting TSI mode with Fly, use regular bids or start TSI again.');
-      }
+      if (game.bidCount < 3 && game.bidValue !== 1) return alert('First bid must be at least 3 of any dice value!');
+      if (game.bidCount < 2) return alert('First bid must be at least 2 dice!');
     }
     
-    if (!isValidBid) {
-      if (game.isTsi) return alert(`Tsi bid must be higher than ${game.currentBid.count} ${game.currentBid.value}'s!`);
-      if (game.isFly) return alert(`Fly bid must double count to at least ${game.currentBid.count * 2}!`);
-      return alert(`Your bid must be higher than ${game.currentBid.count} ${game.currentBid.value}'s`);
-    }
-  } else {
-    if (game.bidCount < 3 && game.bidValue !== 1) return alert('First bid must be at least 3 of any dice value!');
-    if (game.bidCount < 2) return alert('First bid must be at least 2 dice!');
-  }
+    socket.emit('placeBid', { gameId: game.gameId, playerId: game.playerId, count: game.bidCount, value: game.bidValue, isTsi: game.isTsi, isFly: game.isFly });
+    game.isMyTurn = false;
+    updateGameControls();
+  });
   
-  socket.emit('placeBid', { gameId: game.gameId, playerId: game.playerId, count: game.bidCount, value: game.bidValue, isTsi: game.isTsi, isFly: game.isFly });
-  game.isMyTurn = false;
-  updateGameControls();
-});
 
 // Challenge bid
 document.getElementById('challengeBtn').addEventListener('click', () => {

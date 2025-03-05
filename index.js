@@ -890,30 +890,35 @@ io.on('connection', (socket) => {
   
   // Handle player leaving a game
   socket.on('leaveGame', ({ gameId, playerId }) => {
-    // Check if the game exists
-    if (!activeGames[gameId]) {
-      return; // Silently ignore if game doesn't exist
-    }
-    
-    // Get the game instance
+    if (!activeGames[gameId]) return;
     const game = activeGames[gameId];
     
-    // Remove the player
-    if (game.removePlayer(playerId)) {
-      logger.info('Player left game', { gameId, playerId });
-      
-      // If the game hasn't started and has no players left, clean it up
-      if (!game.gameStarted && game.players.length === 0) {
-        delete activeGames[gameId];
-        logger.info('Game removed', { gameId });
-        return;
+    if (game.gameStarted && game.currentBid) {
+      // Forfeit the round as if folding
+      const result = game.fold(playerId);
+      if (result.success) {
+        logger.info('Player forfeited round by leaving', { gameId, playerId, penalty: result.penalty });
+        updatePlayerStats(result.winner, result.loser, result.penalty, gameId);
+        io.to(gameId).emit('foldResult', {
+          loser: result.loser,
+          winner: result.winner,
+          penalty: result.penalty,
+          state: game.getGameState(),
+          baseStakeValue: game.baseStakeValue
+        });
       }
-      
-      // Notify other players
-      socket.to(gameId).emit('playerLeft', {
-        playerId,
-        state: game.getGameState()
+    }
+    
+    // End the game
+    const endResult = game.endGame();
+    if (endResult.success) {
+      logger.info('Game ended due to player leaving', { gameId, playerId });
+      io.to(gameId).emit('gameEnded', {
+        state: game.getGameState(),
+        leaderboard: endResult.leaderboard,
+        endedBy: playerId
       });
+      if (game.originChatId) postLeaderboard(gameId);
     }
   });
   

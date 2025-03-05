@@ -152,11 +152,10 @@ class DiceGame {
     // TSI bid
     else if (isTsi) {
       if (this.currentBid.isTsi) {
-        isValidBid = 
-          (count > this.currentBid.count) || 
-          (count === this.currentBid.count && value > this.currentBid.value);
+        isValidBid = (count > this.currentBid.count) || 
+                     (count === this.currentBid.count && value > this.currentBid.value);
       } else {
-        isValidBid = count >= this.currentBid.count;
+        isValidBid = count >= this.currentBid.count; // Allows any value with same or higher count
       }
     }
     // Fly bid
