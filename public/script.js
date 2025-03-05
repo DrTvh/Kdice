@@ -420,10 +420,12 @@ function updateBidValidity() {
         const count = parseInt(button.dataset.count);
         if (!(count > game.currentBid.count || count === game.currentBid.count)) button.style.display = 'none';
       });
-      valueButtons.forEach(button => {
-        const value = parseInt(button.dataset.value);
-        if (game.bidCount === game.currentBid.count && value <= game.currentBid.value) button.style.display = 'none';
-      });
+      if (!game.isTsi) { // Regular bid: must increase value if count is same
+        valueButtons.forEach(button => {
+          const value = parseInt(button.dataset.value);
+          if (game.bidCount === game.currentBid.count && value <= game.currentBid.value) button.style.display = 'none';
+        });
+      } // TSI bid: allow any value if count is same or higher
     }
   } else {
     countButtons.forEach(button => {
@@ -435,7 +437,7 @@ function updateBidValidity() {
     if (game.bidCount < 3 && game.bidValue !== 1) selectCount(3);
     else if (game.bidCount < 2) selectCount(2);
     
-    document.getElementById('tsiBtn').disabled = false; // Ensure TSI button is always clickable at round start
+    document.getElementById('tsiBtn').disabled = false;
   }
 }
 
