@@ -56,12 +56,8 @@ try {
 const socket = io();
 // Socket.io error handling
 socket.on('connect_error', (error) => {
-  logError('Socket connection error', error);game.selectedStake);
-    socket.emit
-  // Try reconnecting
-  setTimeout(() => {
-    socket.connect();
-  }, 1000);
+  logError('Socket connection error', error);
+  alert('Connection to game server failed. Please try refreshing the page.');
 });
 
 socket.on('error', (error) => {
@@ -70,6 +66,12 @@ socket.on('error', (error) => {
 
 socket.on('connect', () => {
   console.log('Socket connected successfully');
+  document.getElementById('welcomeScreen').classList.add('socket-connected');
+});
+
+socket.on('disconnect', (reason) => {
+  console.log('Socket disconnected:', reason);
+  alert('Disconnected from game server. Please refresh the page.');
 });
 
 socket.on('connect', () => {
