@@ -442,10 +442,8 @@ function updateBidValidity() {
     document.getElementById('tsiBtn').classList.toggle('selected', game.isTsi);
     document.getElementById('tsiBtn').disabled = false;
     document.getElementById('flyBtn').style.display = 'none';
-  }
-}
-    
-    // Make sure initial selection meets minimum requirements
+
+    // Ensure initial selection meets minimum requirements
     if (game.bidCount < 3 && game.bidValue !== 1) {
       selectCount(3);
     } else if (game.bidCount < 2) {
