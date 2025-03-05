@@ -141,20 +141,19 @@ bot.on('message', (msg) => {
     msgText: msg.text, 
     chatType: msg.chat.type,
     chatId: msg.chat.id,
-    from: msg.from?.username || msg.from?.first_name || 'Unknown'
+    from: msg.from.username || msg.from.first_name
   });
   
-  // Check if the message is a valid text message
-  if (!msg.text) return;
+  // Check if bot was mentioned
+  const botMention = `@${bot.getMe().then(botInfo => botInfo.username).catch(() => 'KdiceBot')}`;
   
-  // Log the entire message for debugging
-  logger.debug('Full message object', msg);
-  
-  // Check for direct commands first
-  const command = msg.text.split(' ')[0].toLowerCase();
+  if (msg.text && msg.text.includes(botMention)) {
+    bot.sendMessage(msg.chat.id, getHelpText(), { parse_mode: 'Markdown' });
+    return;
+  }
   
   // Handle start command
-  if (command === '/start' || command.startsWith('/start@')) {
+  if (msg.text && (msg.text === '/start' || msg.text.startsWith('/start@'))) {
     const chatId = msg.chat.id;
     const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
     
@@ -169,23 +168,22 @@ bot.on('message', (msg) => {
         }
       });
     }
-    return;
   }
   
   // Handle rules command
-  if (command === '/rules' || command.startsWith('/rules@')) {
-    bot.sendMessage(msg.chat.id, getRulesText(), { parse_mode: 'Markdown' });
-    return;
+  else if (msg.text && (msg.text === '/rules' || msg.text.startsWith('/rules@'))) {
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, getRulesText(), { parse_mode: 'Markdown' });
   }
   
   // Handle score command
-  if (command === '/score' || command.startsWith('/score@')) {
-    bot.sendMessage(msg.chat.id, getScoreText(msg.chat.id), { parse_mode: 'Markdown' });
-    return;
+  else if (msg.text && (msg.text === '/score' || msg.text.startsWith('/score@'))) {
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, getScoreText(chatId), { parse_mode: 'Markdown' });
   }
   
-  // Handle create game command
-  if (command === '/creategame' || command.startsWith('/creategame@')) {
+  // Handle create game command for groups with stake options in text format
+  else if (msg.text && (msg.text === '/creategame' || msg.text.startsWith('/creategame@'))) {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const userName = msg.from.first_name || 'Player';
@@ -209,11 +207,10 @@ bot.on('message', (msg) => {
         ]
       }
     });
-    return;
   }
   
-  // Handle join game command
-  if (command === '/join' || command.startsWith('/join@')) {
+  // Handle join game command for groups
+  else if (msg.text && (msg.text === '/join' || msg.text.startsWith('/join@'))) {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const userName = msg.from.first_name || 'Player';
@@ -264,22 +261,6 @@ bot.on('message', (msg) => {
         inline_keyboard: keyboard
       }
     });
-    return;
-  }
-  
-  // Check if bot was mentioned or name was included in the message
-  const botMentioned = 
-    (msg.entities && msg.entities.some(entity => 
-      entity.type === 'mention' && 
-      msg.text.substring(entity.offset, entity.offset + entity.length).includes('@KDiceBot')
-    )) ||
-    msg.text.toLowerCase().includes('@kdicebot') ||
-    msg.text.toLowerCase().includes('kdicebot');
-  
-  if (botMentioned) {
-    logger.info('Bot was mentioned or name included in message');
-    bot.sendMessage(msg.chat.id, getHelpText(), { parse_mode: 'Markdown' });
-    return;
   }
 });
 
@@ -447,12 +428,7 @@ function postLeaderboard(gameId) {
   const chatId = gameOrigins[gameId];
   const game = activeGames[gameId];
   
-  if (!chatId || !game) {
-    logger.error('Cannot post leaderboard - missing chatId or game', { gameId, chatId: chatId || 'missing', gameExists: !!game });
-    return;
-  }
-  
-  logger.info('Posting leaderboard to chat', { gameId, chatId });
+  if (!chatId || !game) return;
   
   // Create a sorted leaderboard of just the players in this game
   const gamePlayerIds = game.players.map(p => p.id);
@@ -511,11 +487,7 @@ io.on('connection', (socket) => {
   logger.info('New socket connection', { socketId: socket.id });
   
   // Handle creating a new game
-socket.on('createGame', ({ playerName, playerId, stakeValue }) => {
-  try {
-    // Log the request
-    logger.info('Creating game', { playerName, playerId, stakeValue });
-    
+  socket.on('createGame', ({ playerName, playerId, stakeValue }) => {
     // Ensure valid player data
     if (!playerName || !playerId) {
       socket.emit('error', { message: 'Missing player information' });
@@ -538,18 +510,14 @@ socket.on('createGame', ({ playerName, playerId, stakeValue }) => {
     // Subscribe the socket to the game room
     socket.join(gameId);
     
-    logger.info('Game created successfully', { gameId, playerName, playerId });
+    logger.info('Game created', { gameId, playerName, playerId });
     
     // Send response to the client
     socket.emit('gameCreated', {
       gameId,
       state: game.getGameState(playerId)
     });
-  } catch (error) {
-    logger.error('Error creating game', error);
-    socket.emit('error', { message: 'Error creating game: ' + (error.message || 'Unknown error') });
-  }
-});
+  });
   
   // Handle joining an existing game
   socket.on('joinGame', ({ gameId, playerName, playerId }) => {
@@ -888,38 +856,37 @@ socket.on('createGame', ({ playerName, playerId, stakeValue }) => {
   });
   
   // Handle ending the game
-socket.on('endGame', ({ gameId, playerId }) => {
-  // Check if the game exists
-  if (!activeGames[gameId]) {
-    socket.emit('error', { message: 'Game not found' });
-    return;
-  }
-  
-  // Get the game instance
-  const game = activeGames[gameId];
-  
-  // End the game
-  const result = game.endGame();
-  
-  if (!result.success) {
-    socket.emit('error', { message: 'Failed to end game' });
-    return;
-  }
-  
-  logger.info('Game ended', { gameId, endedBy: playerId });
-  
-  // Notify all players
-  io.to(gameId).emit('gameEnded', {
-    state: game.getGameState(),
-    leaderboard: result.leaderboard,
-    endedBy: playerId
+  socket.on('endGame', ({ gameId }) => {
+    // Check if the game exists
+    if (!activeGames[gameId]) {
+      socket.emit('error', { message: 'Game not found' });
+      return;
+    }
+    
+    // Get the game instance
+    const game = activeGames[gameId];
+    
+    // End the game
+    const result = game.endGame();
+    
+    if (!result.success) {
+      socket.emit('error', { message: 'Failed to end game' });
+      return;
+    }
+    
+    logger.info('Game ended', { gameId });
+    
+    // Notify all players
+    io.to(gameId).emit('gameEnded', {
+      state: game.getGameState(),
+      leaderboard: result.leaderboard
+    });
+    
+    // Post leaderboard to group chat if from there
+    if (game.originChatId) {
+      postLeaderboard(gameId);
+    }
   });
-  
-  // Post leaderboard to group chat if from there
-  if (game.originChatId) {
-    postLeaderboard(gameId);
-  }
-});
   
   // Handle player leaving a game
   socket.on('leaveGame', ({ gameId, playerId }) => {
@@ -959,17 +926,6 @@ socket.on('endGame', ({ gameId, playerId }) => {
 // Default route for the web app
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    activeGames: Object.keys(activeGames).length,
-    botWebhookPath: webhookPath
-  });
 });
 
 // Start the server
