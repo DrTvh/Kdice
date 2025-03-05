@@ -384,15 +384,10 @@ function updateBidValidity() {
         if (parseInt(button.dataset.count) < minCount) button.style.display = 'none';
       });
       if (game.bidCount < minCount) selectCount(minCount);
-      document.getElementById('tsiBtn').disabled = false;
-      document.getElementById('flyBtn').style.display = 'none';
       return;
     }
     
     if (game.currentBid.isTsi && !game.currentBid.isFly) {
-      document.getElementById('tsiBtn').disabled = false;
-      document.getElementById('flyBtn').style.display = 'inline-block';
-      
       if (game.isTsi) {
         if (game.currentBid.isTsi) {
           countButtons.forEach(button => {
@@ -407,7 +402,6 @@ function updateBidValidity() {
           countButtons.forEach(button => {
             if (parseInt(button.dataset.count) < game.currentBid.count) button.style.display = 'none';
           });
-          // Allow all values (2-6) when TSI is selected after a regular bid
           valueButtons.forEach(button => button.style.display = 'flex');
         }
       } else if (game.isFly) {
@@ -416,11 +410,13 @@ function updateBidValidity() {
           if (parseInt(button.dataset.count) < minCount) button.style.display = 'none';
         });
         if (game.bidCount < minCount) selectCount(minCount);
+        valueButtons.forEach(button => button.style.display = 'flex');
+      } else {
+        // Hide all regular bid options, force TSI or Fly
+        countButtons.forEach(button => button.style.display = 'none');
+        valueButtons.forEach(button => button.style.display = 'none');
       }
     } else {
-      document.getElementById('tsiBtn').disabled = false;
-      document.getElementById('flyBtn').style.display = 'none';
-      
       countButtons.forEach(button => {
         const count = parseInt(button.dataset.count);
         if (!(count > game.currentBid.count || count === game.currentBid.count)) button.style.display = 'none';
@@ -442,8 +438,6 @@ function updateBidValidity() {
     
     game.isTsi = game.bidValue === 1;
     document.getElementById('tsiBtn').classList.toggle('selected', game.isTsi);
-    document.getElementById('tsiBtn').disabled = false;
-    document.getElementById('flyBtn').style.display = 'none';
   }
 }
 
@@ -665,18 +659,23 @@ document.getElementById('bidBtn').addEventListener('click', () => {
     } else if (game.currentBid.isTsi && !game.currentBid.isFly) {
       if (!game.isTsi && !game.isFly) return alert('After a Tsi (-) bid, you must choose Tsi (-) or Fly (+)!');
       if (game.isTsi) {
-        isValidBid = (game.bidCount > game.currentBid.count) || (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
+        isValidBid = (game.bidCount > game.currentBid.count) || 
+                     (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
       } else if (game.isFly) {
         const minCount = game.currentBid.count * 2;
         isValidBid = game.bidCount >= minCount;
         if (!isValidBid) return alert(`Fly bid must double count to at least ${minCount}!`);
       }
     } else {
-      isValidBid = (game.bidCount > game.currentBid.count) || (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
+      isValidBid = (game.bidCount > game.currentBid.count) || 
+                   (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
+      if (!game.isTsi && !game.isFly) {
+        return alert('After exiting TSI mode with Fly, use regular bids or start TSI again.');
+      }
     }
     
     if (!isValidBid) {
-      if (game.isTsi) return alert(`Tsi bid must be at least ${game.currentBid.count} dice or higher value!`);
+      if (game.isTsi) return alert(`Tsi bid must be higher than ${game.currentBid.count} ${game.currentBid.value}'s!`);
       if (game.isFly) return alert(`Fly bid must double count to at least ${game.currentBid.count * 2}!`);
       return alert(`Your bid must be higher than ${game.currentBid.count} ${game.currentBid.value}'s`);
     }
