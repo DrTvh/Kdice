@@ -413,7 +413,7 @@ function updateBidValidity() {
       document.getElementById('flyBtn').style.display = 'inline-block';
     }
     
-    else if (game.isTsi) {
+    if (game.isTsi) {
       if (game.currentBid && game.currentBid.isTsi) {
         // Tsi after Tsi: standard rule
         countButtons.forEach(button => {
@@ -706,7 +706,8 @@ document.getElementById('nextRoundBtn').addEventListener('click', () => {
 // Handle "End Game" button
 document.getElementById('endGameBtn').addEventListener('click', () => {
   socket.emit('endGame', {
-    gameId: game.gameId
+    gameId: game.gameId,
+    playerId: game.playerId
   });
   
   // Record who ended the game
@@ -775,53 +776,6 @@ document.getElementById('bidBtn').addEventListener('click', () => {
       const minCount = game.currentBid.count * 2;
       isValidBid = game.bidCount >= minCount;
     }
-    else if (!game.isTsi && !game.isFly && (game.currentBid.isTsi || game.currentBid.value === 1)) {
-      // Must specify tsi or fly after a tsi bid or bid with 1s
-      alert('After a Tsi (-) bid, you must choose Tsi (-) or Fly (+)!');
-      return;
-    }
-    else {
-      // Regular bid: must be higher count or same count but higher value
-      isValidBid = 
-        (game.bidCount > game.currentBid.count) || 
-        (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
-    }
-    
-    if (!isValidBid) {
-      if (game.isTsi) {
-        alert(`Tsi bid must be at least ${game.currentBid.count} dice!`);
-      } else if (game.isFly) {
-        alert(`Fly bid must double count to at least ${game.currentBid.count * 2}!`);
-      } else {
-        alert(`Your bid must be higher than ${game.currentBid.count} ${game.currentBid.value}'s`);
-      }
-      return;
-    }
-  } else {
-    // Validate first bid of the round - minimum 3 of any dice or 2 of 1s
-    if (game.bidCount < 3 && game.bidValue !== 1) {
-      alert('First bid must be at least 3 of any dice value!');
-      return;
-    } else if (game.bidCount < 2) {
-      alert('First bid must be at least 2 dice!');
-      return;
-    }
-  }
-  
-  socket.emit('placeBid', {
-    gameId: game.gameId,
-    playerId: game.playerId,
-    count: game.bidCount,
-    value: game.bidValue,
-    isTsi: game.isTsi,
-    isFly: game.isFly
-  });
-  
-  // Reset bid controls to slightly higher than current bid
-  game.isMyTurn = false;
-  updateGameControls();
-});
-
     else if (!game.isTsi && !game.isFly && (game.currentBid.isTsi || game.currentBid.value === 1)) {
       // Must specify tsi or fly after a tsi bid or bid with 1s
       alert('After a Tsi (-) bid, you must choose Tsi (-) or Fly (+)!');
@@ -1463,10 +1417,10 @@ function updateGameControls() {
   }
   
   // Check if we're in Pi mode (responding to a Pi)
-const isInPiResponse = game.stakes > 1 && 
-game.currentBid && 
-game.isMyTurn &&
-game.currentBid.player !== game.playerId;
+  const isInPiResponse = game.stakes > 1 && 
+                        game.currentBid && 
+                        game.isMyTurn &&
+                        game.currentBid.player !== game.playerId;
   
   // Regular bid elements
   const countBidElem = document.querySelector('.bid-selector:nth-of-type(1)');
