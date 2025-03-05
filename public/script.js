@@ -1430,11 +1430,12 @@ function updateGameControls() {
     return;
   }
   
-  // Check if we're in Pi mode (responding to a Pi)
+  // FIX FOR BUG 2: Proper handling of Pi response mode
+  // When a player calls Pi, the turn goes back to the player who made the last bid
+  // That player should see the Pi response UI (Fold, Open, Pi)
   const isInPiResponse = game.stakes > 1 && 
                         game.currentBid && 
-                        game.isMyTurn &&
-                        game.currentBid.player !== game.playerId;
+                        game.isMyTurn;
   
   // Regular bid elements
   const countBidElem = document.querySelector('.bid-selector:nth-of-type(1)');
