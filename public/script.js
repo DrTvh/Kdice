@@ -407,6 +407,8 @@ function updateBidValidity() {
           countButtons.forEach(button => {
             if (parseInt(button.dataset.count) < game.currentBid.count) button.style.display = 'none';
           });
+          // Allow all values (2-6) when TSI is selected after a regular bid
+          valueButtons.forEach(button => button.style.display = 'flex');
         }
       } else if (game.isFly) {
         const minCount = game.currentBid.count * 2;
@@ -442,6 +444,8 @@ function updateBidValidity() {
     document.getElementById('tsiBtn').classList.toggle('selected', game.isTsi);
     document.getElementById('tsiBtn').disabled = false;
     document.getElementById('flyBtn').style.display = 'none';
+  }
+}
 
     // Ensure initial selection meets minimum requirements
     if (game.bidCount < 3 && game.bidValue !== 1) {
@@ -456,11 +460,7 @@ function updateBidValidity() {
       document.getElementById('tsiBtn').classList.remove('selected');
       document.getElementById('tsiBtn').disabled = false;
     }
-    
-    // Hide FLY button for first bid
-    document.getElementById('flyBtn').style.display = 'none';
-  }
-}
+  
 
 // Add event listeners for stake buttons
 document.querySelectorAll('.stake-button').forEach(button => {
@@ -1286,7 +1286,7 @@ function updateGameControls() {
   
   // Determine FLY button availability (only after Tsi bid)
   const flyButton = document.getElementById('flyBtn');
-  const isFlyAvailable = game.currentBid && (game.currentBid.isTsi || game.currentBid.value === 1);
+  const isFlyAvailable = game.currentBid && game.currentBid.isTsi && !game.currentBid.isFly;
   flyButton.style.display = isFlyAvailable ? 'inline-block' : 'none';
   
   // Update challenge button - rename to "Open!" in Pi mode
