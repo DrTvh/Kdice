@@ -413,7 +413,7 @@ function updateBidValidity() {
       document.getElementById('flyBtn').style.display = 'inline-block';
     }
     
-    if (game.isTsi) {
+    else if (game.isTsi) {
       if (game.currentBid && game.currentBid.isTsi) {
         // Tsi after Tsi: standard rule
         countButtons.forEach(button => {
@@ -433,15 +433,25 @@ function updateBidValidity() {
           }
         });
       } else {
-        // Tsi after regular bid: can have equal or higher count with any value
+        // Tsi after regular bid: special handling for bids with 1s
         countButtons.forEach(button => {
           const count = parseInt(button.dataset.count);
-          if (game.currentBid && count < game.currentBid.count) {
-            button.style.display = 'none';
+          if (game.currentBid) {
+            // If previous bid was for 1s, require higher count
+            if (game.currentBid.value === 1) {
+              if (count <= game.currentBid.count) {
+                button.style.display = 'none';
+              }
+            } else {
+              // For other values, can have equal or higher count
+              if (count < game.currentBid.count) {
+                button.style.display = 'none';
+              }
+            }
           }
         });
       }
-    } 
+    }
     else if (game.isFly) {
       // Fly: must double the count
       const minCount = game.currentBid.count * 2;
@@ -751,8 +761,15 @@ document.getElementById('bidBtn').addEventListener('click', () => {
         (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
     } 
     else if (game.isTsi && !game.currentBid.isTsi) {
-      // Tsi after regular bid: can be equal or higher count with any value
-      isValidBid = game.bidCount >= game.currentBid.count;
+      // Tsi after regular bid: special case for bids with 1s (jokers)
+      // If previous bid had 1s, next bid must have higher count
+      if (game.currentBid.value === 1) {
+        isValidBid = game.bidCount > game.currentBid.count;
+      } else {
+        // For other values, can be equal or higher count
+        isValidBid = game.bidCount >= game.currentBid.count;
+      }
+    }
     }
     else if (game.isFly) {
       // Fly after any bid: must double the count and exceed value if after Tsi
@@ -930,12 +947,11 @@ socket.on('piCalled', ({ player, newStakes, piCount, state }) => {
   // Update game state
   updateGameState(state, false);
   
-  // Handle turn correctly
-  const isMyTurn = state.currentPlayerIndex !== null && 
-                  state.players[state.currentPlayerIndex].id === game.playerId;
+  // Handle turn correctly - force update based on state
+  game.isMyTurn = state.currentPlayerIndex !== null && 
+                 state.players[state.currentPlayerIndex].id === game.playerId;
   
-  game.isMyTurn = isMyTurn;
-  
+  // Force UI refresh to ensure correct buttons are shown
   updateGameUI();
   
   // Show notification
@@ -1401,9 +1417,10 @@ function updateGameControls() {
   }
   
   // Check if we're in Pi mode (responding to a Pi)
-  const isInPiResponse = game.stakes > 1 && 
-                         game.currentBid && 
-                         game.currentBid.player !== game.playerId;
+const isInPiResponse = game.stakes > 1 && 
+game.currentBid && 
+game.isMyTurn &&
+game.currentBid.player !== game.playerId;
   
   // Regular bid elements
   const countBidElem = document.querySelector('.bid-selector:nth-of-type(1)');
