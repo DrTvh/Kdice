@@ -356,164 +356,94 @@ function selectCount(count) {
 function selectValue(value) {
   game.bidValue = value;
   
-  // If value is 1, automatically set to TSI mode
-  if (value === 1 && !game.currentBid) {
+  // Force TSI for value 1, but only toggle UI if not already set
+  if (value === 1 && !game.isTsi) {
     game.isTsi = true;
     document.getElementById('tsiBtn').classList.add('selected');
   }
   
-  // Update UI to show selection
   const valueButtons = document.querySelectorAll('#valueButtons .number-button');
   valueButtons.forEach(button => {
-    if (parseInt(button.dataset.value) === value) {
-      button.classList.add('selected');
-    } else {
-      button.classList.remove('selected');
-    }
+    button.classList.toggle('selected', parseInt(button.dataset.value) === value);
   });
   
   updateBidValidity();
 }
 
 function updateBidValidity() {
-  // If there's a current bid, hide invalid options
+  const countButtons = document.querySelectorAll('#countButtons .number-button');
+  const valueButtons = document.querySelectorAll('#valueButtons .number-button');
+  
+  countButtons.forEach(button => button.style.display = 'flex');
+  valueButtons.forEach(button => button.style.display = 'flex');
+  
   if (game.currentBid) {
-    const countButtons = document.querySelectorAll('#countButtons .number-button');
-    const valueButtons = document.querySelectorAll('#valueButtons .number-button');
-    
-    // First, reset all to visible
-    countButtons.forEach(button => button.style.display = 'flex');
-    valueButtons.forEach(button => button.style.display = 'flex');
-    
-    // If previous bid had value 1 or was TSI, force TSI or FLY mode
-    if (game.currentBid.value === 1 || game.currentBid.isTsi) {
-      game.isTsi = true;
-      document.getElementById('tsiBtn').classList.add('selected');
-      document.getElementById('tsiBtn').disabled = true;
-      
-      // Show FLY button when previous bid was TSI
-      document.getElementById('flyBtn').style.display = 'inline-block';
-    }
-    
-    // FIX FOR BUG 1: Special handling for bids with value 1 (jokers)
     if (game.currentBid.value === 1) {
-      // After a bid with 1s, you need to have a higher count for any bid
       const minCount = game.currentBid.count + 1;
-      
       countButtons.forEach(button => {
-        const count = parseInt(button.dataset.count);
-        if (count < minCount) {
-          button.style.display = 'none';
-        }
+        if (parseInt(button.dataset.count) < minCount) button.style.display = 'none';
       });
-      
-      // Ensure selected count meets minimum requirement
-      if (game.bidCount < minCount) {
-        selectCount(minCount);
-      }
-      
-      return; // Skip other validation rules
+      if (game.bidCount < minCount) selectCount(minCount);
+      document.getElementById('tsiBtn').disabled = false;
+      document.getElementById('flyBtn').style.display = 'none';
+      return;
     }
     
-    if (game.isTsi) {
-      if (game.currentBid && game.currentBid.isTsi) {
-        // Tsi after Tsi: standard rule
-        countButtons.forEach(button => {
-          const count = parseInt(button.dataset.count);
-          const isValidCount = count > game.currentBid.count;
-          const isValidEqualCount = count === game.currentBid.count;
-          
-          if (!isValidCount && !isValidEqualCount) {
-            button.style.display = 'none';
-          }
-        });
-        
-        valueButtons.forEach(button => {
-          const value = parseInt(button.dataset.value);
-          if (game.bidCount === game.currentBid.count && value <= game.currentBid.value) {
-            button.style.display = 'none';
-          }
-        });
-      } else {
-        // Tsi after regular bid: can have equal or higher count
-        countButtons.forEach(button => {
-          const count = parseInt(button.dataset.count);
-          if (count < game.currentBid.count) {
-            button.style.display = 'none';
-          }
-        });
-      }
-    }
-    else if (game.isFly) {
-      // Fly: must double the count and exits Tsi mode
-      if (!game.currentBid || !game.currentBid.isTsi) {
-        // Reset Fly if invalid
-        game.isFly = false;
-        document.getElementById('flyBtn').classList.remove('selected');
-        return;
-      }
-      const minCount = game.currentBid.count * 2;
+    if (game.currentBid.isTsi && !game.currentBid.isFly) {
+      document.getElementById('tsiBtn').disabled = false;
+      document.getElementById('flyBtn').style.display = 'inline-block';
       
-      countButtons.forEach(button => {
-        const count = parseInt(button.dataset.count);
-        if (count < minCount) {
-          button.style.display = 'none';
+      if (game.isTsi) {
+        if (game.currentBid.isTsi) {
+          countButtons.forEach(button => {
+            const count = parseInt(button.dataset.count);
+            if (!(count > game.currentBid.count || count === game.currentBid.count)) button.style.display = 'none';
+          });
+          valueButtons.forEach(button => {
+            const value = parseInt(button.dataset.value);
+            if (game.bidCount === game.currentBid.count && value <= game.currentBid.value) button.style.display = 'none';
+          });
         } else {
-          button.style.display = 'flex';
+          countButtons.forEach(button => {
+            if (parseInt(button.dataset.count) < game.currentBid.count) button.style.display = 'none';
+          });
         }
-      });
-      
-      // Ensure selected count meets minimum requirement
-      if (game.bidCount < minCount) {
-        selectCount(minCount);
+      } else if (game.isFly) {
+        const minCount = game.currentBid.count * 2;
+        countButtons.forEach(button => {
+          if (parseInt(button.dataset.count) < minCount) button.style.display = 'none';
+        });
+        if (game.bidCount < minCount) selectCount(minCount);
       }
+    } else {
+      document.getElementById('tsiBtn').disabled = false;
+      document.getElementById('flyBtn').style.display = 'none';
       
-      // Fly exits Tsi mode, so allow all values
-      valueButtons.forEach(button => {
-        button.style.display = 'flex';
-      });
-    }
-    else {
-      // Regular bid after regular bid: standard rules
       countButtons.forEach(button => {
         const count = parseInt(button.dataset.count);
-        
-        // Count is valid if it's greater than current bid count
-        const isValidCount = count > game.currentBid.count;
-        
-        // Equal count is valid only if we can increase value
-        const isValidEqualCount = count === game.currentBid.count;
-        
-        if (!isValidCount && !isValidEqualCount) {
-          button.style.display = 'none';
-        }
+        if (!(count > game.currentBid.count || count === game.currentBid.count)) button.style.display = 'none';
       });
-      
       valueButtons.forEach(button => {
         const value = parseInt(button.dataset.value);
-        
-        // If count equals current bid count, value must be greater
-        if (game.bidCount === game.currentBid.count && value <= game.currentBid.value) {
-          button.style.display = 'none';
-        }
+        if (game.bidCount === game.currentBid.count && value <= game.currentBid.value) button.style.display = 'none';
       });
     }
   } else {
-    // No current bid - first bid of the round
-    // Enforce minimum bid of 3 of any value or 2 of value 1
-    const countButtons = document.querySelectorAll('#countButtons .number-button');
     countButtons.forEach(button => {
       const count = parseInt(button.dataset.count);
-      
-      // Hide counts 1 and 2 unless bidding for 1s
-      if (count < 3 && game.bidValue !== 1) {
-        button.style.display = 'none';
-      } else if (count < 2) {
-        button.style.display = 'none';
-      } else {
-        button.style.display = 'flex';
-      }
+      if (count < 3 && game.bidValue !== 1) button.style.display = 'none';
+      else if (count < 2) button.style.display = 'none';
     });
+    
+    if (game.bidCount < 3 && game.bidValue !== 1) selectCount(3);
+    else if (game.bidCount < 2) selectCount(2);
+    
+    game.isTsi = game.bidValue === 1;
+    document.getElementById('tsiBtn').classList.toggle('selected', game.isTsi);
+    document.getElementById('tsiBtn').disabled = false;
+    document.getElementById('flyBtn').style.display = 'none';
+  }
+}
     
     // Make sure initial selection meets minimum requirements
     if (game.bidCount < 3 && game.bidValue !== 1) {
@@ -550,59 +480,34 @@ document.querySelectorAll('.stake-button').forEach(button => {
 
 // Add event listeners for tsi/fly buttons
 document.getElementById('tsiBtn').addEventListener('click', () => {
-  if (!game.isMyTurn) {
-    return; // Silently ignore if not your turn
-  }
+  if (!game.isMyTurn) return;
   
-  // Toggle TSI
-  if (game.isTsi) {
-    // Only allow toggling off if not forced TSI mode
-    if (!game.currentBid || (game.currentBid.value !== 1 && !game.currentBid.isTsi)) {
-      game.isTsi = false;
-      document.getElementById('tsiBtn').classList.remove('selected');
-    }
-  } else {
+  if (game.bidValue === 1) {
     game.isTsi = true;
-    game.isFly = false;
     document.getElementById('tsiBtn').classList.add('selected');
-    document.getElementById('flyBtn').classList.remove('selected');
+    return;
   }
   
-  // Update bid validity for Tsi/Fly
+  game.isTsi = !game.isTsi;
+  game.isFly = false;
+  document.getElementById('tsiBtn').classList.toggle('selected', game.isTsi);
+  document.getElementById('flyBtn').classList.remove('selected');
   updateBidValidity();
 });
 
 document.getElementById('flyBtn').addEventListener('click', () => {
-  if (!game.isMyTurn) {
-    return; // Silently ignore if not your turn
-  }
+  if (!game.isMyTurn) return;
+  if (!game.currentBid || !game.currentBid.isTsi || game.currentBid.isFly) return;
   
-  // FLY is only valid after a TSI bid
-  if (!game.currentBid || (!game.currentBid.isTsi && game.currentBid.value !== 1)) {
-    // Fly is not available without a preceding Tsi bid or bid with 1s
-    return;
-  }
+  game.isFly = !game.isFly;
+  game.isTsi = false;
+  document.getElementById('flyBtn').classList.toggle('selected', game.isFly);
+  document.getElementById('tsiBtn').classList.remove('selected');
   
-  // Toggle FLY
   if (game.isFly) {
-    game.isFly = false;
-    document.getElementById('flyBtn').classList.remove('selected');
-  } else {
-    game.isFly = true;
-    game.isTsi = false;
-    document.getElementById('flyBtn').classList.add('selected');
-    document.getElementById('tsiBtn').classList.remove('selected');
-    
-    // Force minimum count to be double the current bid count
-    if (game.currentBid) {
-      const minCount = game.currentBid.count * 2;
-      if (game.bidCount < minCount) {
-        selectCount(minCount);
-      }
-    }
+    const minCount = game.currentBid.count * 2;
+    if (game.bidCount < minCount) selectCount(minCount);
   }
-  
-  // Update bid validity for Tsi/Fly
   updateBidValidity();
 });
 
@@ -746,96 +651,43 @@ document.getElementById('leaveGameBtn').addEventListener('click', () => {
 
 // Place bid
 document.getElementById('bidBtn').addEventListener('click', () => {
-  if (!game.isMyTurn) {
-    return; // Silently ignore if not your turn
-  }
+  if (!game.isMyTurn) return;
   
-  // Auto-set TSI mode for value 1
-  if (game.bidValue === 1) {
+  if (game.bidValue === 1 && !game.isTsi) {
     game.isTsi = true;
     document.getElementById('tsiBtn').classList.add('selected');
   }
   
-  // Validate bid against current bid
   if (game.currentBid) {
     let isValidBid = false;
     
-    // FIX FOR BUG 1: Special handling for bids after value 1
     if (game.currentBid.value === 1) {
-      // After a bid with 1s, any bid must have a higher count
       isValidBid = game.bidCount > game.currentBid.count;
-      
-      if (!isValidBid) {
-        alert(`After a bid with 1s, you must increase the count to at least ${game.currentBid.count + 1}!`);
-        return;
+      if (!isValidBid) return alert(`After a bid with 1s, you must increase the count to at least ${game.currentBid.count + 1}!`);
+    } else if (game.currentBid.isTsi && !game.currentBid.isFly) {
+      if (!game.isTsi && !game.isFly) return alert('After a Tsi (-) bid, you must choose Tsi (-) or Fly (+)!');
+      if (game.isTsi) {
+        isValidBid = (game.bidCount > game.currentBid.count) || (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
+      } else if (game.isFly) {
+        const minCount = game.currentBid.count * 2;
+        isValidBid = game.bidCount >= minCount;
+        if (!isValidBid) return alert(`Fly bid must double count to at least ${minCount}!`);
       }
-    }
-    else if (game.isTsi && game.currentBid.isTsi) {
-      // Tsi after Tsi: must be higher count or same count but higher value
-      isValidBid = 
-        (game.bidCount > game.currentBid.count) || 
-        (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
-    } 
-    else if (game.isTsi && !game.currentBid.isTsi) {
-      // Tsi after regular bid: can be equal or higher count
-      isValidBid = game.bidCount >= game.currentBid.count;
-    }
-    else if (game.isFly) {
-      // Fly after TSI bid: must double the count and reintroduces jokers
-      if (!game.currentBid || !game.currentBid.isTsi) {
-        alert("Fly (+) is only available after a Tsi (-) bid!");
-        return;
-      }
-      const minCount = game.currentBid.count * 2;
-      isValidBid = game.bidCount >= minCount;
-      if (!isValidBid) {
-        alert(`Fly bid must double count to at least ${minCount}!`);
-        return;
-      }
-    }
-    else if (!game.isTsi && !game.isFly && (game.currentBid.isTsi || game.currentBid.value === 1)) {
-      // Must specify tsi or fly after a tsi bid or bid with 1s
-      alert('After a Tsi (-) bid, you must choose Tsi (-) or Fly (+)!');
-      return;
-    }
-    else {
-      // Regular bid: must be higher count or same count but higher value
-      isValidBid = 
-        (game.bidCount > game.currentBid.count) || 
-        (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
+    } else {
+      isValidBid = (game.bidCount > game.currentBid.count) || (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
     }
     
     if (!isValidBid) {
-      if (game.isTsi) {
-        alert(`Tsi bid must be at least ${game.currentBid.count} dice!`);
-      } else if (game.isFly) {
-        alert(`Fly bid must double count to at least ${game.currentBid.count * 2}!`);
-      } else {
-        alert(`Your bid must be higher than ${game.currentBid.count} ${game.currentBid.value}'s`);
-      }
-      return;
+      if (game.isTsi) return alert(`Tsi bid must be at least ${game.currentBid.count} dice or higher value!`);
+      if (game.isFly) return alert(`Fly bid must double count to at least ${game.currentBid.count * 2}!`);
+      return alert(`Your bid must be higher than ${game.currentBid.count} ${game.currentBid.value}'s`);
     }
   } else {
-    // Validate first bid of the round - minimum 3 of any dice or 2 of 1s
-    if (game.bidCount < 3 && game.bidValue !== 1) {
-      alert('First bid must be at least 3 of any dice value!');
-      return;
-    } else if (game.bidCount < 2) {
-      alert('First bid must be at least 2 dice!');
-      return;
-    }
+    if (game.bidCount < 3 && game.bidValue !== 1) return alert('First bid must be at least 3 of any dice value!');
+    if (game.bidCount < 2) return alert('First bid must be at least 2 dice!');
   }
   
-  socket.emit('placeBid', {
-    gameId: game.gameId,
-    playerId: game.playerId,
-    count: game.bidCount,
-    value: game.bidValue,
-    isTsi: game.isTsi,
-    isFly: game.isFly
-  });
-  
-  // Reset bid controls to slightly higher than current bid
+  socket.emit('placeBid', { gameId: game.gameId, playerId: game.playerId, count: game.bidCount, value: game.bidValue, isTsi: game.isTsi, isFly: game.isFly });
   game.isMyTurn = false;
   updateGameControls();
 });
@@ -930,29 +782,24 @@ socket.on('gameUpdate', ({ state }) => {
 });
 
 socket.on('bidPlaced', ({ player, bid, state, nextPlayerId }) => {
-  // Add to bid history
-  game.bidHistory.push({
-    playerName: player.name,
-    count: bid.count,
-    value: bid.value,
-    isTsi: bid.isTsi,
-    isFly: bid.isFly
-  });
-  
-  // Update UI
+  game.bidHistory.push({ playerName: player.name, count: bid.count, value: bid.value, isTsi: bid.isTsi, isFly: bid.isFly });
   updateBidHistory();
-  
-  // Update current bid
   game.currentBid = bid;
-  
-  // Update current bid display
   updateCurrentBidDisplay();
-  
-  // Update general game state (without dice)
   updateGameState(state, false);
-  
-  // Explicitly check if it's my turn now
   game.isMyTurn = nextPlayerId === game.playerId;
+  
+  if (bid.isFly) {
+    game.isTsi = false;
+    game.isFly = false;
+    document.getElementById('tsiBtn').classList.remove('selected');
+    document.getElementById('flyBtn').classList.remove('selected');
+  } else if (game.isMyTurn && bid.value !== 1) {
+    game.isTsi = false;
+    game.isFly = false;
+    document.getElementById('tsiBtn').classList.remove('selected');
+    document.getElementById('flyBtn').classList.remove('selected');
+  }
   
   updateGameUI();
 });
@@ -979,28 +826,18 @@ socket.on('piCalled', ({ player, newStakes, piCount, state }) => {
 });
 
 socket.on('yourTurn', ({ state, playerId }) => {
-  // Only update if this event is for me
   if (playerId === game.playerId) {
     updateGameState(state);
     game.isMyTurn = true;
     updateGameUI();
     
-    // Reset TSI/FLY selection if allowed (not forced by previous bid)
-    if (!game.currentBid || (game.currentBid.value !== 1 && !game.currentBid.isTsi)) {
+    if (!game.currentBid || game.currentBid.isFly || (game.currentBid.value !== 1 && !game.currentBid.isTsi)) {
       game.isTsi = false;
       game.isFly = false;
       document.getElementById('tsiBtn').classList.remove('selected');
       document.getElementById('flyBtn').classList.remove('selected');
       document.getElementById('tsiBtn').disabled = false;
-    } else {
-      // Force TSI mode if previous bid was TSI or had value 1
-      game.isTsi = true;
-      document.getElementById('tsiBtn').classList.add('selected');
-      document.getElementById('tsiBtn').disabled = true;
-      document.getElementById('flyBtn').style.display = 'inline-block';
     }
-    
-    // Haptic feedback for turn
     tgApp.HapticFeedback.notificationOccurred('success');
   }
 });
