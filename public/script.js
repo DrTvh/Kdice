@@ -143,7 +143,6 @@ function createDiceDots(value, isJoker) {
   }
   // For 3 (1 + 2)
   else if (value === 3) {
-    // Center dot
     const dot1 = document.createElement('div');
     dot1.className = 'dice-dot';
     dot1.style.position = 'absolute';
@@ -152,7 +151,6 @@ function createDiceDots(value, isJoker) {
     dot1.style.transform = 'translate(-50%, -50%)';
     diceElem.appendChild(dot1);
     
-    // Top-left dot
     const dot2 = document.createElement('div');
     dot2.className = 'dice-dot';
     dot2.style.position = 'absolute';
@@ -160,7 +158,6 @@ function createDiceDots(value, isJoker) {
     dot2.style.left = '25%';
     diceElem.appendChild(dot2);
     
-    // Bottom-right dot
     const dot3 = document.createElement('div');
     dot3.className = 'dice-dot';
     dot3.style.position = 'absolute';
@@ -170,7 +167,6 @@ function createDiceDots(value, isJoker) {
   }
   // For 4 (in all corners)
   else if (value === 4) {
-    // Top-left dot
     const dot1 = document.createElement('div');
     dot1.className = 'dice-dot';
     dot1.style.position = 'absolute';
@@ -178,7 +174,6 @@ function createDiceDots(value, isJoker) {
     dot1.style.left = '25%';
     diceElem.appendChild(dot1);
     
-    // Top-right dot
     const dot2 = document.createElement('div');
     dot2.className = 'dice-dot';
     dot2.style.position = 'absolute';
@@ -186,7 +181,6 @@ function createDiceDots(value, isJoker) {
     dot2.style.right = '25%';
     diceElem.appendChild(dot2);
     
-    // Bottom-left dot
     const dot3 = document.createElement('div');
     dot3.className = 'dice-dot';
     dot3.style.position = 'absolute';
@@ -194,7 +188,6 @@ function createDiceDots(value, isJoker) {
     dot3.style.left = '25%';
     diceElem.appendChild(dot3);
     
-    // Bottom-right dot
     const dot4 = document.createElement('div');
     dot4.className = 'dice-dot';
     dot4.style.position = 'absolute';
@@ -204,7 +197,6 @@ function createDiceDots(value, isJoker) {
   }
   // For 5 (4 + center)
   else if (value === 5) {
-    // Center dot
     const dot1 = document.createElement('div');
     dot1.className = 'dice-dot';
     dot1.style.position = 'absolute';
@@ -213,7 +205,6 @@ function createDiceDots(value, isJoker) {
     dot1.style.transform = 'translate(-50%, -50%)';
     diceElem.appendChild(dot1);
     
-    // Top-left dot
     const dot2 = document.createElement('div');
     dot2.className = 'dice-dot';
     dot2.style.position = 'absolute';
@@ -221,7 +212,6 @@ function createDiceDots(value, isJoker) {
     dot2.style.left = '25%';
     diceElem.appendChild(dot2);
     
-    // Top-right dot
     const dot3 = document.createElement('div');
     dot3.className = 'dice-dot';
     dot3.style.position = 'absolute';
@@ -229,7 +219,6 @@ function createDiceDots(value, isJoker) {
     dot3.style.right = '25%';
     diceElem.appendChild(dot3);
     
-    // Bottom-left dot
     const dot4 = document.createElement('div');
     dot4.className = 'dice-dot';
     dot4.style.position = 'absolute';
@@ -237,7 +226,6 @@ function createDiceDots(value, isJoker) {
     dot4.style.left = '25%';
     diceElem.appendChild(dot4);
     
-    // Bottom-right dot
     const dot5 = document.createElement('div');
     dot5.className = 'dice-dot';
     dot5.style.position = 'absolute';
@@ -247,7 +235,6 @@ function createDiceDots(value, isJoker) {
   }
   // For 6 (like 4 but with middle row added)
   else if (value === 6) {
-    // Top-left dot
     const dot1 = document.createElement('div');
     dot1.className = 'dice-dot';
     dot1.style.position = 'absolute';
@@ -255,7 +242,6 @@ function createDiceDots(value, isJoker) {
     dot1.style.left = '25%';
     diceElem.appendChild(dot1);
     
-    // Top-right dot
     const dot2 = document.createElement('div');
     dot2.className = 'dice-dot';
     dot2.style.position = 'absolute';
@@ -263,7 +249,6 @@ function createDiceDots(value, isJoker) {
     dot2.style.right = '25%';
     diceElem.appendChild(dot2);
     
-    // Middle-left dot
     const dot3 = document.createElement('div');
     dot3.className = 'dice-dot';
     dot3.style.position = 'absolute';
@@ -272,7 +257,6 @@ function createDiceDots(value, isJoker) {
     dot3.style.transform = 'translateY(-50%)';
     diceElem.appendChild(dot3);
     
-    // Middle-right dot
     const dot4 = document.createElement('div');
     dot4.className = 'dice-dot';
     dot4.style.position = 'absolute';
@@ -281,7 +265,6 @@ function createDiceDots(value, isJoker) {
     dot4.style.transform = 'translateY(-50%)';
     diceElem.appendChild(dot4);
     
-    // Bottom-left dot
     const dot5 = document.createElement('div');
     dot5.className = 'dice-dot';
     dot5.style.position = 'absolute';
@@ -289,7 +272,6 @@ function createDiceDots(value, isJoker) {
     dot5.style.left = '25%';
     diceElem.appendChild(dot5);
     
-    // Bottom-right dot
     const dot6 = document.createElement('div');
     dot6.className = 'dice-dot';
     dot6.style.position = 'absolute';
@@ -465,7 +447,7 @@ function updateBidValidity() {
     else if (game.isFly) {
       // Fly: must double the count and exits Tsi mode
       if (!game.currentBid || !game.currentBid.isTsi) {
-        // Shouldn't happen due to UI constraints, but reset Fly if invalid
+        // Reset Fly if invalid
         game.isFly = false;
         document.getElementById('flyBtn').classList.remove('selected');
         return;
@@ -810,7 +792,6 @@ document.getElementById('bidBtn').addEventListener('click', () => {
         alert(`Fly bid must double count to at least ${minCount}!`);
         return;
       }
-    }
     }
     else if (!game.isTsi && !game.isFly && (game.currentBid.isTsi || game.currentBid.value === 1)) {
       // Must specify tsi or fly after a tsi bid or bid with 1s
@@ -1192,11 +1173,8 @@ socket.on('gameEnded', ({ state, leaderboard, endedBy }) => {
   
   // Find the name of the player who ended the game, with better fallback
   const enderName = enderPlayer ? enderPlayer.name : (
-    // Try one more lookup by using the player ID from the game state
     game.players.find(p => p.id === game.gameEnder || p.id === endedBy)?.name || 
-    // If both the socket.id and player.id lookups fail, try the playerId
     game.players.find(p => p.id === socket.id)?.name || 
-    // Final fallback
     'Someone'
   );
   
@@ -1453,8 +1431,6 @@ function updateGameControls() {
   }
   
   // FIX FOR BUG 2: Proper handling of Pi response mode
-  // When a player calls Pi, the turn goes back to the player who made the last bid
-  // That player should see the Pi response UI (Fold, Open, Pi)
   const isInPiResponse = game.stakes > 1 && 
                         game.currentBid && 
                         game.isMyTurn;
@@ -1511,7 +1487,7 @@ function updateGameControls() {
     valueBidElem.style.display = 'none';
     bidTypeButtons.style.display = 'none';
     
-    // IMPORTANT: Hide the regular bid button in Pi response mode
+    // Hide the regular bid button in Pi response mode
     bidBtn.style.display = 'none';
     
     // Hide the regular challenge button since we're showing Open
