@@ -16,6 +16,7 @@ class DiceGame {
     this.playerScores = {}; // Track points for this game
     this.originChatId = null; // Track if game came from a group chat
     this.roundHistory = []; // Track round results
+    this.gameEnder = null; // Track who ended the game
   }
 
   updatePlayerScore(winnerId, loserId, points) {
@@ -352,27 +353,29 @@ class DiceGame {
     return true;
   }
   
-  endGame() {
-    this.gameEnded = true;
-    
-    // Generate leaderboard based on player scores
-    const leaderboard = Object.keys(this.playerScores)
-      .map(playerId => {
-        const player = this.players.find(p => p.id === playerId);
-        return {
-          id: playerId,
-          name: player ? player.name : 'Unknown',
-          points: this.playerScores[playerId],
-          dollars: this.playerScores[playerId] * this.baseStakeValue
-        };
-      })
-      .sort((a, b) => b.points - a.points);
-    
-    return {
-      success: true,
-      leaderboard
-    };
-  }
+  // Add field to endGame method to store who ended the game
+endGame() {
+  this.gameEnded = true;
+  
+  // Generate leaderboard based on player scores
+  const leaderboard = Object.keys(this.playerScores)
+    .map(playerId => {
+      const player = this.players.find(p => p.id === playerId);
+      return {
+        id: playerId,
+        name: player ? player.name : 'Unknown',
+        points: this.playerScores[playerId],
+        dollars: this.playerScores[playerId] * this.baseStakeValue
+      };
+    })
+    .sort((a, b) => b.points - a.points);
+  
+  return {
+    success: true,
+    leaderboard,
+    endedBy: this.gameEnder
+  };
+}
 
   getGameState(forPlayerId = null) {
     const state = {

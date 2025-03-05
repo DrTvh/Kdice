@@ -55,7 +55,8 @@ let game = {
   playerScores: {}, // Track scores for each player
   selectedStake: 100, // Default stake value
   roundHistory: [], // Track round results
-  players: []      // Players in the game
+  players: [],     // Players in the game
+  gameEnder: null  // Track who ended the game
 };
 
 // DOM Elements
@@ -64,7 +65,8 @@ const screens = {
   lobby: document.getElementById('lobbyScreen'),
   game: document.getElementById('gameScreen'),
   challengeResult: document.getElementById('challengeResultScreen'),
-  roundSummary: document.getElementById('roundSummaryScreen')
+  roundSummary: document.getElementById('roundSummaryScreen'),
+  gameEnd: document.getElementById('gameEndScreen')
 };
 
 // Check for game join parameter
@@ -341,6 +343,10 @@ function initializeBidButtons() {
     valueButtons.appendChild(button);
   }
   
+  // Set initial bid to meet minimum requirements (3 of any value or 2 of value 1)
+  game.bidCount = 3;
+  game.bidValue = 2;
+  
   // Mark initial selections
   selectCount(game.bidCount);
   selectValue(game.bidValue);
@@ -368,6 +374,12 @@ function selectCount(count) {
 function selectValue(value) {
   game.bidValue = value;
   
+  // If value is 1, automatically set to TSI mode
+  if (value === 1 && !game.currentBid) {
+    game.isTsi = true;
+    document.getElementById('tsiBtn').classList.add('selected');
+  }
+  
   // Update UI to show selection
   const valueButtons = document.querySelectorAll('#valueButtons .number-button');
   valueButtons.forEach(button => {
@@ -390,6 +402,16 @@ function updateBidValidity() {
     // First, reset all to visible
     countButtons.forEach(button => button.style.display = 'flex');
     valueButtons.forEach(button => button.style.display = 'flex');
+    
+    // If previous bid had value 1 or was TSI, force TSI or FLY mode
+    if (game.currentBid.value === 1 || game.currentBid.isTsi) {
+      game.isTsi = true;
+      document.getElementById('tsiBtn').classList.add('selected');
+      document.getElementById('tsiBtn').disabled = true;
+      
+      // Show FLY button when previous bid was TSI
+      document.getElementById('flyBtn').style.display = 'inline-block';
+    }
     
     if (game.isTsi) {
       if (game.currentBid && game.currentBid.isTsi) {
@@ -457,17 +479,38 @@ function updateBidValidity() {
       });
     }
   } else {
-    // No current bid, all options are valid
+    // No current bid - first bid of the round
+    // Enforce minimum bid of 3 of any value or 2 of value 1
     const countButtons = document.querySelectorAll('#countButtons .number-button');
-    const valueButtons = document.querySelectorAll('#valueButtons .number-button');
-    
     countButtons.forEach(button => {
-      button.style.display = 'flex';
+      const count = parseInt(button.dataset.count);
+      
+      // Hide counts 1 and 2 unless bidding for 1s
+      if (count < 3 && game.bidValue !== 1) {
+        button.style.display = 'none';
+      } else if (count < 2) {
+        button.style.display = 'none';
+      } else {
+        button.style.display = 'flex';
+      }
     });
     
-    valueButtons.forEach(button => {
-      button.style.display = 'flex';
-    });
+    // Make sure initial selection meets minimum requirements
+    if (game.bidCount < 3 && game.bidValue !== 1) {
+      selectCount(3);
+    } else if (game.bidCount < 2) {
+      selectCount(2);
+    }
+    
+    // Reset TSI button state for new round unless bidding 1s
+    if (game.bidValue !== 1) {
+      game.isTsi = false;
+      document.getElementById('tsiBtn').classList.remove('selected');
+      document.getElementById('tsiBtn').disabled = false;
+    }
+    
+    // Hide FLY button for first bid
+    document.getElementById('flyBtn').style.display = 'none';
   }
 }
 
@@ -493,8 +536,11 @@ document.getElementById('tsiBtn').addEventListener('click', () => {
   
   // Toggle TSI
   if (game.isTsi) {
-    game.isTsi = false;
-    document.getElementById('tsiBtn').classList.remove('selected');
+    // Only allow toggling off if not forced TSI mode
+    if (!game.currentBid || (game.currentBid.value !== 1 && !game.currentBid.isTsi)) {
+      game.isTsi = false;
+      document.getElementById('tsiBtn').classList.remove('selected');
+    }
   } else {
     game.isTsi = true;
     game.isFly = false;
@@ -639,6 +685,9 @@ document.getElementById('endGameBtn').addEventListener('click', () => {
   socket.emit('endGame', {
     gameId: game.gameId
   });
+  
+  // Record who ended the game
+  game.gameEnder = game.playerId;
 });
 
 // Return to home screen
@@ -672,6 +721,12 @@ document.getElementById('bidBtn').addEventListener('click', () => {
     return; // Silently ignore if not your turn
   }
   
+  // Auto-set TSI mode for value 1
+  if (game.bidValue === 1) {
+    game.isTsi = true;
+    document.getElementById('tsiBtn').classList.add('selected');
+  }
+  
   // Validate bid against current bid
   if (game.currentBid) {
     let isValidBid = false;
@@ -691,8 +746,8 @@ document.getElementById('bidBtn').addEventListener('click', () => {
       const minCount = game.currentBid.count * 2;
       isValidBid = game.bidCount >= minCount;
     }
-    else if (!game.isTsi && !game.isFly && game.currentBid.isTsi) {
-      // Must specify tsi or fly after a tsi bid
+    else if (!game.isTsi && !game.isFly && (game.currentBid.isTsi || game.currentBid.value === 1)) {
+      // Must specify tsi or fly after a tsi bid or bid with 1s
       alert('After a Tsi (-) bid, you must choose Tsi (-) or Fly (+)!');
       return;
     }
@@ -711,6 +766,15 @@ document.getElementById('bidBtn').addEventListener('click', () => {
       } else {
         alert(`Your bid must be higher than ${game.currentBid.count} ${game.currentBid.value}'s`);
       }
+      return;
+    }
+  } else {
+    // Validate first bid of the round - minimum 3 of any dice or 2 of 1s
+    if (game.bidCount < 3 && game.bidValue !== 1) {
+      alert('First bid must be at least 3 of any dice value!');
+      return;
+    } else if (game.bidCount < 2) {
+      alert('First bid must be at least 2 dice!');
       return;
     }
   }
@@ -875,11 +939,20 @@ socket.on('yourTurn', ({ state, playerId }) => {
     game.isMyTurn = true;
     updateGameUI();
     
-    // Reset tsi/fly selection
-    game.isTsi = false;
-    game.isFly = false;
-    document.getElementById('tsiBtn').classList.remove('selected');
-    document.getElementById('flyBtn').classList.remove('selected');
+    // Reset TSI/FLY selection if allowed (not forced by previous bid)
+    if (!game.currentBid || (game.currentBid.value !== 1 && !game.currentBid.isTsi)) {
+      game.isTsi = false;
+      game.isFly = false;
+      document.getElementById('tsiBtn').classList.remove('selected');
+      document.getElementById('flyBtn').classList.remove('selected');
+      document.getElementById('tsiBtn').disabled = false;
+    } else {
+      // Force TSI mode if previous bid was TSI or had value 1
+      game.isTsi = true;
+      document.getElementById('tsiBtn').classList.add('selected');
+      document.getElementById('tsiBtn').disabled = true;
+      document.getElementById('flyBtn').style.display = 'inline-block';
+    }
     
     // Haptic feedback for turn
     tgApp.HapticFeedback.notificationOccurred('success');
@@ -1022,12 +1095,13 @@ socket.on('roundStarted', ({ state, playerId, round }) => {
     game.isFly = false;
     document.getElementById('tsiBtn').classList.remove('selected');
     document.getElementById('flyBtn').classList.remove('selected');
+    document.getElementById('tsiBtn').disabled = false;
     
     updateCurrentBidDisplay();
     updateStakesDisplay();
     
-    // Update bid buttons
-    updateBidValidity();
+    // Update bid buttons - initialize with minimum bid requirements
+    initializeBidButtons();
     
     updateBidHistory();
     updateGameUI();
@@ -1035,7 +1109,13 @@ socket.on('roundStarted', ({ state, playerId, round }) => {
   }
 });
 
-socket.on('gameEnded', ({ state, leaderboard }) => {
+socket.on('gameEnded', ({ state, leaderboard, endedBy }) => {
+  // Store who ended the game
+  game.gameEnder = endedBy || game.gameEnder;
+  
+  // Find the name of the player who ended the game
+  const enderName = game.players.find(p => p.id === game.gameEnder)?.name || 'Unknown';
+  
   // Display leaderboard
   const leaderboardElem = document.getElementById('leaderboardDisplay');
   leaderboardElem.innerHTML = '<h3>Game Leaderboard</h3>';
@@ -1068,11 +1148,29 @@ socket.on('gameEnded', ({ state, leaderboard }) => {
   
   leaderboardElem.appendChild(leaderTable);
   
+  // Show appropriate message based on who ended the game
+  let gameEndMessage;
+  if (game.gameEnder === game.playerId) {
+    gameEndMessage = `You ended the game.`;
+  } else {
+    gameEndMessage = `${enderName} was a chicken and left the game.`;
+  }
+  
   // Show goodbye message
   document.getElementById('gameEndText').innerHTML = `
-    <p>The game has ended. Thanks for playing!</p>
+    <p>${gameEndMessage}</p>
     <p>A full leaderboard has been posted to the group chat.</p>
   `;
+  
+  // Add a close app button
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'button';
+  closeBtn.textContent = 'Close App';
+  closeBtn.addEventListener('click', () => {
+    tgApp.close();
+  });
+  
+  document.getElementById('gameEndText').appendChild(closeBtn);
   
   // Show game end screen
   showScreen('gameEnd');
@@ -1281,9 +1379,9 @@ function updateGameControls() {
   const foldBtn = document.getElementById('foldBtn');
   const openBtn = document.getElementById('openBtn');
   
-  // Determine Fly button availability (only after Tsi bid)
+  // Determine FLY button availability (only after Tsi bid)
   const flyButton = document.getElementById('flyBtn');
-  const isFlyAvailable = game.currentBid && game.currentBid.isTsi;
+  const isFlyAvailable = game.currentBid && (game.currentBid.isTsi || game.currentBid.value === 1);
   flyButton.style.display = isFlyAvailable ? 'inline-block' : 'none';
   
   // Update challenge button - rename to "Open!" in Pi mode
@@ -1336,7 +1434,7 @@ function updateGameControls() {
       piBtn.style.display = 'none';
     }
     
-    // Show Fold with penalty amount
+    // Always show Fold button with penalty amount, even for Pi 2x
     foldBtn.textContent = `Fold (-${foldPenalty}p)`;
     foldBtn.style.display = 'block';
     
