@@ -855,10 +855,8 @@ io.on('connection', (socket) => {
     });
   });
   
-  // Handle ending the game
-  // Modify the endGame socket event handler in index.js
-
-socket.on('endGame', ({ gameId }) => {
+ // Handle ending the game
+socket.on('endGame', ({ gameId, playerId }) => {
   // Check if the game exists
   if (!activeGames[gameId]) {
     socket.emit('error', { message: 'Game not found' });
@@ -869,7 +867,7 @@ socket.on('endGame', ({ gameId }) => {
   const game = activeGames[gameId];
   
   // Record who ended the game
-  game.gameEnder = socket.id; // Store the socket ID of the player who ended the game
+  game.gameEnder = playerId || socket.id; // Store the player ID of who ended the game
   
   // End the game
   const result = game.endGame();

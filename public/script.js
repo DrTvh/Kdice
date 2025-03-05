@@ -452,6 +452,11 @@ function updateBidValidity() {
           button.style.display = 'none';
         }
       });
+      
+      // Ensure selected count meets minimum requirement
+      if (game.bidCount < minCount) {
+        selectCount(minCount);
+      }
     }
     else {
       // Regular bid after regular bid: standard rules
@@ -558,8 +563,8 @@ document.getElementById('flyBtn').addEventListener('click', () => {
   }
   
   // FLY is only valid after a TSI bid
-  if (!game.currentBid || !game.currentBid.isTsi) {
-    // Fly is not available without a preceding Tsi bid
+  if (!game.currentBid || (!game.currentBid.isTsi && game.currentBid.value !== 1)) {
+    // Fly is not available without a preceding Tsi bid or bid with 1s
     return;
   }
   
@@ -572,6 +577,14 @@ document.getElementById('flyBtn').addEventListener('click', () => {
     game.isTsi = false;
     document.getElementById('flyBtn').classList.add('selected');
     document.getElementById('tsiBtn').classList.remove('selected');
+    
+    // Force minimum count to be double the current bid count
+    if (game.currentBid) {
+      const minCount = game.currentBid.count * 2;
+      if (game.bidCount < minCount) {
+        selectCount(minCount);
+      }
+    }
   }
   
   // Update bid validity for Tsi/Fly
@@ -1113,8 +1126,35 @@ socket.on('gameEnded', ({ state, leaderboard, endedBy }) => {
   // Store who ended the game
   game.gameEnder = endedBy || game.gameEnder;
   
-  // Find the name of the player who ended the game
-  const enderName = game.players.find(p => p.id === game.gameEnder)?.name || 'Unknown';
+  // Get the player object directly from the list of players in our game state
+  let enderPlayer = null;
+  
+  // Search for the player who ended the game
+  for (const player of game.players) {
+    // Check player id against socket.id (which is what endedBy contains) or against game.gameEnder
+    if (player.id === game.gameEnder || player.id === endedBy) {
+      enderPlayer = player;
+      break;
+    }
+  }
+  
+  // Find the name of the player who ended the game, with better fallback
+  const enderName = enderPlayer ? enderPlayer.name : (
+    // Try one more lookup by using the player ID from the game state
+    game.players.find(p => p.id === game.gameEnder || p.id === endedBy)?.name || 
+    // If both the socket.id and player.id lookups fail, try the playerId
+    game.players.find(p => p.id === socket.id)?.name || 
+    // Final fallback
+    'Someone'
+  );
+  
+  // Log who ended the game for debugging
+  console.log('Game ended by:', { 
+    endedBy, 
+    gameEnder: game.gameEnder, 
+    enderName, 
+    players: game.players.map(p => ({id: p.id, name: p.name}))
+  });
   
   // Display leaderboard
   const leaderboardElem = document.getElementById('leaderboardDisplay');
@@ -1136,7 +1176,7 @@ socket.on('gameEnded', ({ state, leaderboard, endedBy }) => {
   leaderboard.forEach(player => {
     const row = document.createElement('tr');
     const dollars = player.points * (state.baseStakeValue || 100);
-    const dollarsDisplay = dollars >= 0 ? `+$${dollars}` : `-$${Math.abs(dollars)}`;
+    const dollarsDisplay = dollars >= 0 ? `+${dollars}` : `-${Math.abs(dollars)}`;
     
     row.innerHTML = `
       <td>${player.name}${player.id === game.playerId ? ' (You)' : ''}</td>
@@ -1416,6 +1456,8 @@ function updateGameControls() {
     countBidElem.style.display = 'none';
     valueBidElem.style.display = 'none';
     bidTypeButtons.style.display = 'none';
+    
+    // IMPORTANT: Hide the regular bid button in Pi response mode
     bidBtn.style.display = 'none';
     
     // Show challenge button as "Open!"
