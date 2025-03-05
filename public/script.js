@@ -412,7 +412,6 @@ function updateBidValidity() {
         if (game.bidCount < minCount) selectCount(minCount);
         valueButtons.forEach(button => button.style.display = 'flex');
       } else {
-        // Hide all regular bid options, force TSI or Fly
         countButtons.forEach(button => button.style.display = 'none');
         valueButtons.forEach(button => button.style.display = 'none');
       }
@@ -436,8 +435,7 @@ function updateBidValidity() {
     if (game.bidCount < 3 && game.bidValue !== 1) selectCount(3);
     else if (game.bidCount < 2) selectCount(2);
     
-    game.isTsi = game.bidValue === 1;
-    document.getElementById('tsiBtn').classList.toggle('selected', game.isTsi);
+    document.getElementById('tsiBtn').disabled = false; // Ensure TSI button is always clickable at round start
   }
 }
 
@@ -653,10 +651,7 @@ document.getElementById('bidBtn').addEventListener('click', () => {
   if (game.currentBid) {
     let isValidBid = false;
     
-    if (game.currentBid.value === 1) {
-      isValidBid = game.bidCount > game.currentBid.count;
-      if (!isValidBid) return alert(`After a bid with 1s, you must increase the count to at least ${game.currentBid.count + 1}!`);
-    } else if (game.currentBid.isTsi && !game.currentBid.isFly) {
+    if (game.currentBid.isTsi && !game.currentBid.isFly) { // Includes value === 1 since TSI is forced
       if (!game.isTsi && !game.isFly) return alert('After a Tsi (-) bid, you must choose Tsi (-) or Fly (+)!');
       if (game.isTsi) {
         isValidBid = (game.bidCount > game.currentBid.count) || 
