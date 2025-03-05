@@ -99,8 +99,22 @@ class DiceGame {
   rollDices() {
     this.dices = {};
     for (const player of this.players) {
-      this.dices[player.id] = Array.from({ length: 5 }, () => Math.floor(Math.random() * 6) + 1);
+      let dice;
+      do {
+        dice = Array.from({ length: 5 }, () => Math.floor(Math.random() * 6) + 1);
+      } while (!this.hasPair(dice));
+      this.dices[player.id] = dice;
     }
+  }
+  
+  // Helper method to check for at least one pair
+  hasPair(dice) {
+    const counts = {};
+    dice.forEach(value => {
+      counts[value] = (counts[value] || 0) + 1;
+      if (counts[value] >= 2) return true;
+    });
+    return Object.values(counts).some(count => count >= 2);
   }
 
   getCurrentPlayer() {
@@ -232,21 +246,22 @@ class DiceGame {
     
     const actualCount = this.countDiceValue(this.currentBid.value, this.currentBid.isTsi);
     
+    const bidder = this.players.find(p => p.id === this.currentBid.player);
+    const challenger = this.getCurrentPlayer();
     const prevPlayerIndex = (this.currentPlayerIndex - 1 + this.players.length) % this.players.length;
     const prevPlayer = this.players[prevPlayerIndex];
     
     let winner, loser;
     
     if (actualCount < this.currentBid.count) {
-      winner = this.getCurrentPlayer();
-      loser = prevPlayer;
-      this.lastRoundLoser = loser.id;
+      winner = challenger; // Challenger wins if bid fails
+      loser = bidder; // Bidder loses
     } else {
-      winner = prevPlayer;
-      loser = this.getCurrentPlayer();
-      this.lastRoundLoser = loser.id;
+      winner = bidder; // Bidder wins if bid succeeds
+      loser = challenger; // Challenger loses
     }
     
+    this.lastRoundLoser = loser.id;
     this.updatePlayerScore(winner.id, loser.id, this.stakes);
     
     return {
