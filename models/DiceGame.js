@@ -133,6 +133,13 @@ class DiceGame {
     
     // First bid of the game
     if (this.currentBid === null) {
+      // Validate minimum first bid requirements (at least 3 of any value or 2 of 1s)
+      if (count < 3 && value !== 1) {
+        return { success: false, message: "First bid must be at least 3 of any dice value" };
+      } else if (count < 2) {
+        return { success: false, message: "First bid must be at least 2 dice" };
+      }
+      
       this.currentBid = { count, value, isTsi, isFly, player: playerId };
       console.log('Before getNextPlayer', { currentIndex: this.currentPlayerIndex });
       const nextPlayer = this.getNextPlayer();
@@ -143,14 +150,25 @@ class DiceGame {
     // Validate bid based on type
     let isValidBid = false;
     
-    if (isTsi) {
+    // FIX FOR BUG 1: Special handling for bids after value 1 (jokers)
+    if (this.currentBid.value === 1) {
+      // After a bid with 1s, you need to have a higher count for any bid
+      if (count <= this.currentBid.count) {
+        return { 
+          success: false, 
+          message: `After a bid with 1s, you must increase the count to at least ${this.currentBid.count + 1}` 
+        };
+      }
+      isValidBid = true;
+    }
+    else if (isTsi) {
       if (this.currentBid && this.currentBid.isTsi) {
         // Tsi after Tsi: must be higher count or same count but higher value
         isValidBid = 
           (count > this.currentBid.count) || 
           (count === this.currentBid.count && value > this.currentBid.value);
       } else if (this.currentBid) {
-        // TSI after regular bid: can be equal or higher count with any value
+        // TSI after regular bid: can be equal or higher count
         // Fix: Allow TSI with same count but different value after a regular bid
         isValidBid = count >= this.currentBid.count;
       } else {

@@ -413,6 +413,26 @@ function updateBidValidity() {
       document.getElementById('flyBtn').style.display = 'inline-block';
     }
     
+    // FIX FOR BUG 1: Special handling for bids with value 1 (jokers)
+    if (game.currentBid.value === 1) {
+      // After a bid with 1s, you need to have a higher count for any bid
+      const minCount = game.currentBid.count + 1;
+      
+      countButtons.forEach(button => {
+        const count = parseInt(button.dataset.count);
+        if (count < minCount) {
+          button.style.display = 'none';
+        }
+      });
+      
+      // Ensure selected count meets minimum requirement
+      if (game.bidCount < minCount) {
+        selectCount(minCount);
+      }
+      
+      return; // Skip other validation rules
+    }
+    
     if (game.isTsi) {
       if (game.currentBid && game.currentBid.isTsi) {
         // Tsi after Tsi: standard rule
@@ -433,21 +453,11 @@ function updateBidValidity() {
           }
         });
       } else {
-        // Tsi after regular bid: special handling for bids with 1s
+        // Tsi after regular bid: can have equal or higher count
         countButtons.forEach(button => {
           const count = parseInt(button.dataset.count);
-          if (game.currentBid) {
-            // If previous bid was for 1s, require higher count
-            if (game.currentBid.value === 1) {
-              if (count <= game.currentBid.count) {
-                button.style.display = 'none';
-              }
-            } else {
-              // For other values, can have equal or higher count
-              if (count < game.currentBid.count) {
-                button.style.display = 'none';
-              }
-            }
+          if (count < game.currentBid.count) {
+            button.style.display = 'none';
           }
         });
       }
@@ -755,21 +765,25 @@ document.getElementById('bidBtn').addEventListener('click', () => {
   if (game.currentBid) {
     let isValidBid = false;
     
-    if (game.isTsi && game.currentBid.isTsi) {
+    // FIX FOR BUG 1: Special handling for bids after value 1
+    if (game.currentBid.value === 1) {
+      // After a bid with 1s, any bid must have a higher count
+      isValidBid = game.bidCount > game.currentBid.count;
+      
+      if (!isValidBid) {
+        alert(`After a bid with 1s, you must increase the count to at least ${game.currentBid.count + 1}!`);
+        return;
+      }
+    }
+    else if (game.isTsi && game.currentBid.isTsi) {
       // Tsi after Tsi: must be higher count or same count but higher value
       isValidBid = 
         (game.bidCount > game.currentBid.count) || 
         (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
     } 
     else if (game.isTsi && !game.currentBid.isTsi) {
-      // Tsi after regular bid: special case for bids with 1s (jokers)
-      // If previous bid had 1s, next bid must have higher count
-      if (game.currentBid.value === 1) {
-        isValidBid = game.bidCount > game.currentBid.count;
-      } else {
-        // For other values, can be equal or higher count
-        isValidBid = game.bidCount >= game.currentBid.count;
-      }
+      // Tsi after regular bid: can be equal or higher count
+      isValidBid = game.bidCount >= game.currentBid.count;
     }
     else if (game.isFly) {
       // Fly after any bid: must double the count and exceed value if after Tsi
@@ -1467,7 +1481,7 @@ function updateGameControls() {
     return;
   }
   
-  // Pi mode
+  // FIX FOR BUG 2: Proper handling of Pi response mode
   if (isInPiResponse) {
     // Hide regular bidding controls
     countBidElem.style.display = 'none';
@@ -1477,9 +1491,8 @@ function updateGameControls() {
     // IMPORTANT: Hide the regular bid button in Pi response mode
     bidBtn.style.display = 'none';
     
-    // Show challenge button as "Open!"
-    challengeBtn.textContent = 'Open!';
-    challengeBtn.style.display = 'block';
+    // Hide the regular challenge button since we're showing Open
+    challengeBtn.style.display = 'none';
     
     // Show Pi mode controls
     const foldPenalty = Math.floor(game.stakes / 2);
@@ -1493,7 +1506,7 @@ function updateGameControls() {
       piBtn.style.display = 'none';
     }
     
-    // Always show Fold button with penalty amount, even for Pi 2x
+    // Always show Fold button with penalty amount
     foldBtn.textContent = `Fold (-${foldPenalty}p)`;
     foldBtn.style.display = 'block';
     
