@@ -180,15 +180,21 @@ class DiceGame {
       // Fly after any bid: must double the count
       const minCount = this.currentBid ? this.currentBid.count * 2 : 1;
       
-      // FLY after TSI: double count required and if same count, higher value after TSI
-      if (this.currentBid && this.currentBid.isTsi) {
-        isValidBid = count >= minCount;
-      } else {
-        // Not valid to do FLY after a non-TSI bid
+      // FLY is only valid after a TSI bid
+      if (!this.currentBid || !this.currentBid.isTsi) {
         return { 
           success: false, 
           message: "Fly (+) is only available after a Tsi (-) bid!" 
         };
+      }
+      
+      // Fly bid must double the count and reintroduces jokers (not Tsi)
+      isValidBid = count >= minCount;
+      if (isValidBid) {
+        // Explicitly set isTsi to false for Fly to ensure jokers are counted
+        this.currentBid = { count, value, isTsi: false, isFly: true, player: playerId };
+        const nextPlayer = this.getNextPlayer();
+        return { success: true };
       }
     }
     else if (this.currentBid && this.currentBid.isTsi) {

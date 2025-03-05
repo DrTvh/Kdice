@@ -463,13 +463,21 @@ function updateBidValidity() {
       }
     }
     else if (game.isFly) {
-      // Fly: must double the count
+      // Fly: must double the count and exits Tsi mode
+      if (!game.currentBid || !game.currentBid.isTsi) {
+        // Shouldn't happen due to UI constraints, but reset Fly if invalid
+        game.isFly = false;
+        document.getElementById('flyBtn').classList.remove('selected');
+        return;
+      }
       const minCount = game.currentBid.count * 2;
       
       countButtons.forEach(button => {
         const count = parseInt(button.dataset.count);
         if (count < minCount) {
           button.style.display = 'none';
+        } else {
+          button.style.display = 'flex';
         }
       });
       
@@ -477,6 +485,11 @@ function updateBidValidity() {
       if (game.bidCount < minCount) {
         selectCount(minCount);
       }
+      
+      // Fly exits Tsi mode, so allow all values
+      valueButtons.forEach(button => {
+        button.style.display = 'flex';
+      });
     }
     else {
       // Regular bid after regular bid: standard rules
@@ -786,9 +799,18 @@ document.getElementById('bidBtn').addEventListener('click', () => {
       isValidBid = game.bidCount >= game.currentBid.count;
     }
     else if (game.isFly) {
-      // Fly after any bid: must double the count and exceed value if after Tsi
+      // Fly after TSI bid: must double the count and reintroduces jokers
+      if (!game.currentBid || !game.currentBid.isTsi) {
+        alert("Fly (+) is only available after a Tsi (-) bid!");
+        return;
+      }
       const minCount = game.currentBid.count * 2;
       isValidBid = game.bidCount >= minCount;
+      if (!isValidBid) {
+        alert(`Fly bid must double count to at least ${minCount}!`);
+        return;
+      }
+    }
     }
     else if (!game.isTsi && !game.isFly && (game.currentBid.isTsi || game.currentBid.value === 1)) {
       // Must specify tsi or fly after a tsi bid or bid with 1s
