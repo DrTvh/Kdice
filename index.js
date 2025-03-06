@@ -411,15 +411,6 @@ function updatePlayerStats(winner, loser, stakes, gameId) {
     winnerNewPoints: playerStats[winner.id].points,
     loserNewPoints: playerStats[loser.id].points
   });
-  
-  // If game came from a group chat, announce the result
-  const game = activeGames[gameId];
-  
-  if (game && game.originChatId) {
-    bot.sendMessage(game.originChatId, 
-      `Game update: ${winner.name} won ${stakes} points ($${stakes * game.baseStakeValue}) from ${loser.name}!`
-    );
-  }
 }
 
 // Function to post leaderboard to original group chat
