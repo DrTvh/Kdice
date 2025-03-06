@@ -285,7 +285,7 @@ bot.on('message', (msg) => {
         callback_data: `join_game_${game.id}_${userId}_${encodeURIComponent(userName)}`
       }]);
       
-      bot.sendMessage(chatId, "Choose a game to join:", {
+      bot.sendMessage(chatId, `Choose a game to join:\n\nNote: If you haven't already, please start a private conversation with @KdiceBot to receive game links.`, {
         reply_markup: {
           inline_keyboard: keyboard
         }
@@ -362,31 +362,55 @@ bot.on('callback_query', (callbackQuery) => {
       bot.answerCallbackQuery(callbackQuery.id, { text: "Joined the game successfully!" });
       
       // Send a private message to the joiner with the direct link
-      bot.sendMessage(joinerId, `You joined ${game.players[0].name}'s game. Click below to open it:`, {
-        reply_markup: {
-          inline_keyboard: [[
-            { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
-          ]]
-        }
-      }).then(() => {
-        logger.info('Sent private join message to', { joinerId, joinerName, gameId });
-      }).catch(err => {
-        logger.error('Failed to send private message to joiner', { error: err.message });
-      });
-      
-      // Send group message notifying others
-      const creatorName = game.players[0].name;
-      bot.sendMessage(chatId, `I sent ${joinerName} a private message to join the game created by ${creatorName}.`, {
-        reply_markup: {
-          inline_keyboard: [[
-            { text: "View Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
-          ]]
-        }
-      }).then(() => {
-        logger.info('Sent group notification for join', { chatId, joinerName, creatorName });
-      }).catch(err => {
-        logger.error('Failed to send group notification', { error: err.message });
-      });
+bot.sendMessage(joinerId, `You joined ${game.players[0].name}'s game. Click below to open it:`, {
+  reply_markup: {
+    inline_keyboard: [[
+      { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
+    ]]
+  }
+}).then(() => {
+  logger.info('Sent private join message to', { joinerId, joinerName, gameId });
+  // Notify the joiner in the group chat that a private message has been sent
+  bot.sendMessage(chatId, `${joinerName}, a private message to open the game has been sent to you.`, {
+    reply_markup: {
+      inline_keyboard: [[
+        { text: "View Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
+      ]]
+    }
+  }).then(() => {
+    logger.info('Notified joiner in group about private message', { chatId, joinerName });
+  }).catch(err => {
+    logger.error('Failed to notify joiner in group about private message', { error: err.message });
+  });
+}).catch(err => {
+  logger.error('Failed to send private message to joiner', { error: err.message });
+  // Fallback: Send the join link in the group chat if private message fails
+  bot.sendMessage(chatId, `${joinerName}, I couldn't send you a private message. Please start a private conversation with @KdiceBot and click below to join ${game.players[0].name}'s game:`, {
+    reply_markup: {
+      inline_keyboard: [[
+        { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
+      ]]
+    }
+  }).then(() => {
+    logger.info('Sent fallback join link in group', { chatId, joinerName, gameId });
+  }).catch(fallbackErr => {
+    logger.error('Failed to send fallback join link in group', { chatId, joinerName, error: fallbackErr.message });
+  });
+});
+    
+// Send group message notifying others
+const creatorName = game.players[0].name;
+bot.sendMessage(chatId, `I sent ${joinerName} a private message to join the game created by ${creatorName}.`, {
+  reply_markup: {
+    inline_keyboard: [[
+      { text: "View Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
+    ]]
+  }
+}).then(() => {
+  logger.info('Sent group notification for join', { chatId, joinerName, creatorName });
+}).catch(err => {
+  logger.error('Failed to send group notification', { error: err.message });
+});
       
       // Announce the player joining with an inline button to start the game
       if (game.players.length === 2) { // Start game when 2 players join
