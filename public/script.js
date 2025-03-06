@@ -57,6 +57,7 @@ let game = {
   roundHistory: [], // Track round results
   players: [],     // Players in the game
   gameEnder: null  // Track who ended the game
+  autoJoinGameId: null // Track auto-join attempts
 };
 
 // DOM Elements
@@ -77,13 +78,14 @@ function checkForGameJoin() {
   const stake = urlParams.get('stake');
   
   if (gameIdToJoin) {
+    game.autoJoinGameId = gameIdToJoin; // Set flag for auto-join
     document.getElementById('gameIdInput').value = gameIdToJoin;
     if (chatId) {
-      game.originChatId = chatId; // Store group chat ID for context
+      game.originChatId = chatId;
     }
     if (stake) {
-      game.selectedStake = parseInt(stake); // Preload stake value
-      game.baseStakeValue = parseInt(stake); // Ensure base stake is set
+      game.selectedStake = parseInt(stake);
+      game.baseStakeValue = parseInt(stake);
       document.querySelector(`.stake-button[data-stake="${stake}"]`).classList.add('selected');
       document.querySelectorAll('.stake-button').forEach(btn => {
         if (btn.dataset.stake !== stake) btn.classList.remove('selected');
@@ -96,6 +98,7 @@ function checkForGameJoin() {
 
   const joinGameCookie = getCookie('joinGame');
   if (joinGameCookie) {
+    game.autoJoinGameId = joinGameCookie;
     document.getElementById('gameIdInput').value = joinGameCookie;
     setTimeout(() => {
       document.getElementById('joinGameBtn').click();
@@ -743,40 +746,23 @@ document.getElementById('challengeBtn').addEventListener('click', () => {
 socket.on('gameCreated', ({ gameId, state }) => {
   game.gameId = gameId;
   updateGameState(state);
-  
-  // Display the game ID for sharing
   document.getElementById('gameIdDisplay').textContent = gameId;
-  
-  // Update lobby player list
   updateLobbyPlayerList();
-  
-  // Switch to lobby screen
   showScreen('lobby');
+  game.autoJoinGameId = null; // Clear after success
 });
 
 socket.on('gameJoined', ({ gameId, state, alreadyJoined }) => {
   game.gameId = gameId;
   updateGameState(state);
-  
-  // Preload players and stake from state
   game.players = state.players || game.players;
   game.baseStakeValue = state.baseStakeValue || game.baseStakeValue;
-  
   updateLobbyPlayerList();
-  
-  if (alreadyJoined) {
+  if (alreadyJoined && gameId !== game.autoJoinGameId) {
     alert("You're already in this game!");
   }
-  
   showScreen('lobby');
-  
-  // Auto-start if 2 players are present
-  if (game.players.length === 2) {
-    socket.emit('startGame', {
-      gameId: game.gameId,
-      playerId: game.playerId
-    });
-  }
+  game.autoJoinGameId = null; // Clear after success
 });
 
 socket.on('playerJoined', ({ player, state }) => {
@@ -788,15 +774,13 @@ socket.on('playerJoined', ({ player, state }) => {
 });
 
 socket.on('gameStarted', ({ state, playerId }) => {
-  if (playerId === game.playerId) {
-    updateGameState(state);
-    
-    game.maxCount = state.players.length * 5;
-    initializeBidButtons();
-    
-    updateGameUI();
-    showScreen('game');
-  }
+  // Process for all players in the room, not just one playerId
+  updateGameState(state);
+  game.maxCount = state.players.length * 5;
+  initializeBidButtons();
+  updateGameUI();
+  showScreen('game');
+  logger.info('Game started on client', { gameId: game.gameId, playerId: game.playerId });
 });
 
 socket.on('gameUpdate', ({ state }) => {
