@@ -78,7 +78,8 @@ function checkForGameJoin() {
   const stake = urlParams.get('stake');
   
   if (gameIdToJoin) {
-    game.autoJoinGameId = gameIdToJoin; // Set flag for auto-join
+    console.log('Auto-joining game', { gameId: gameIdToJoin, chatId, stake });
+    game.autoJoinGameId = gameIdToJoin;
     document.getElementById('gameIdInput').value = gameIdToJoin;
     if (chatId) {
       game.originChatId = chatId;
@@ -86,13 +87,18 @@ function checkForGameJoin() {
     if (stake) {
       game.selectedStake = parseInt(stake);
       game.baseStakeValue = parseInt(stake);
-      document.querySelector(`.stake-button[data-stake="${stake}"]`).classList.add('selected');
+      document.querySelector(`.stake-button[data-stake="${stake}"]`)?.classList.add('selected');
       document.querySelectorAll('.stake-button').forEach(btn => {
         if (btn.dataset.stake !== stake) btn.classList.remove('selected');
       });
     }
     setTimeout(() => {
-      document.getElementById('joinGameBtn').click();
+      const joinBtn = document.getElementById('joinGameBtn');
+      if (joinBtn) {
+        joinBtn.click();
+      } else {
+        console.error('joinGameBtn not found');
+      }
     }, 500);
   }
 
@@ -101,17 +107,15 @@ function checkForGameJoin() {
     game.autoJoinGameId = joinGameCookie;
     document.getElementById('gameIdInput').value = joinGameCookie;
     setTimeout(() => {
-      document.getElementById('joinGameBtn').click();
-      document.cookie = "joinGame=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      const joinBtn = document.getElementById('joinGameBtn');
+      if (joinBtn) {
+        joinBtn.click();
+        document.cookie = "joinGame=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      } else {
+        console.error('joinGameBtn not found');
+      }
     }, 500);
   }
-}
-
-// Helper function to get a cookie by name
-function getCookie(name) {
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop().split(';').shift();
 }
 
 // Helper function to switch screens
@@ -753,6 +757,7 @@ socket.on('gameCreated', ({ gameId, state }) => {
 });
 
 socket.on('gameJoined', ({ gameId, state, alreadyJoined }) => {
+  console.log('Game joined', { gameId, alreadyJoined, playerId: game.playerId });
   game.gameId = gameId;
   updateGameState(state);
   game.players = state.players || game.players;
@@ -760,9 +765,10 @@ socket.on('gameJoined', ({ gameId, state, alreadyJoined }) => {
   updateLobbyPlayerList();
   if (alreadyJoined && gameId !== game.autoJoinGameId) {
     alert("You're already in this game!");
+  } else {
+    showScreen('lobby');
   }
-  showScreen('lobby');
-  game.autoJoinGameId = null; // Clear after success
+  game.autoJoinGameId = null;
 });
 
 socket.on('playerJoined', ({ player, state }) => {
@@ -774,13 +780,12 @@ socket.on('playerJoined', ({ player, state }) => {
 });
 
 socket.on('gameStarted', ({ state, playerId }) => {
-  // Process for all players in the room, not just one playerId
+  console.log('Game started received', { gameId: game.gameId, playerId, localPlayerId: game.playerId });
   updateGameState(state);
   game.maxCount = state.players.length * 5;
   initializeBidButtons();
   updateGameUI();
   showScreen('game');
-  logger.info('Game started on client', { gameId: game.gameId, playerId: game.playerId });
 });
 
 socket.on('gameUpdate', ({ state }) => {
