@@ -628,10 +628,12 @@ document.getElementById('endGameBtn').addEventListener('click', (e) => {
     return;
   }
 
+  socket.emit('joinGame', { gameId: game.gameId, playerName: game.playerName, playerId: game.playerId }); // Re-join room
   socket.emit('endGame', {
     gameId: game.gameId,
     playerId: game.playerId
   });
+  console.log('endGame event emitted', { gameId: game.gameId });
 
   game.gameEnder = game.playerId;
 
@@ -1015,6 +1017,7 @@ socket.on('roundStarted', ({ state, playerId, round }) => {
 });
 
 socket.on('endGame', ({ state, leaderboard, endedBy }) => {
+  console.log('Received gameEnded event', { gameId: game.gameId, endedBy });
   game.gameEnder = endedBy || game.gameEnder;
   let enderPlayer = game.players.find(p => p.id === game.gameEnder || p.id === endedBy) || { name: 'Someone' };
   const enderName = enderPlayer.name;
