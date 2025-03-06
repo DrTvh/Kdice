@@ -949,7 +949,9 @@ io.on('connection', (socket) => {
   
   // Handle ending the game
   socket.on('endGame', ({ gameId }) => {
+    logger.info('Received endGame request', { gameId });
     if (!activeGames[gameId]) {
+      logger.info('Game not found', { gameId });
       socket.emit('error', { message: 'Game not found' });
       return;
     }
@@ -958,20 +960,19 @@ io.on('connection', (socket) => {
     const result = game.endGame();
   
     if (!result.success) {
+      logger.info('Failed to end game', { gameId });
       socket.emit('error', { message: 'Failed to end game' });
       return;
     }
   
     logger.info('Game ended', { gameId });
   
-    // Notify all players
     io.to(gameId).emit('gameEnded', {
       state: game.getGameState(),
       leaderboard: result.leaderboard,
       endedBy: socket.id
     });
   
-    // Delay cleanup to ensure clients process the event
     setTimeout(() => {
       if (game.originChatId) {
         postLeaderboard(gameId);

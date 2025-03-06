@@ -616,8 +616,17 @@ document.getElementById('nextRoundBtn').addEventListener('click', () => {
 
 // Handle "End Game" button
 document.getElementById('endGameBtn').addEventListener('click', (e) => {
+  console.log('End Game button clicked', { gameId: game.gameId, playerId: game.playerId });
   const btn = e.target;
   btn.disabled = true;
+
+  if (!game.gameId) {
+    console.log('No valid gameId, cannot end game');
+    alert('Game session not found. Returning to home.');
+    showScreen('welcome');
+    btn.disabled = false;
+    return;
+  }
 
   socket.emit('endGame', {
     gameId: game.gameId,
