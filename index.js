@@ -45,6 +45,20 @@ const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
 const webhookPath = `/bot${process.env.BOT_TOKEN}`;
 bot.setWebHook(`https://kdice.onrender.com${webhookPath}`); // Set webhook to Render URL
 
+// Fetch the bot's username on initialization
+let botUsername = 'KdiceBot'; // Default fallback matches @KdiceBot
+bot.getMe()
+  .then(botInfo => {
+    botUsername = botInfo.username.toLowerCase();
+    logger.info('Bot username fetched successfully', { botUsername });
+    if (botUsername !== 'kdicebot') {
+      logger.warn('Bot username does not match expected @KdiceBot', { fetchedUsername: botUsername });
+    }
+  })
+  .catch(err => {
+    logger.error('Failed to fetch bot username, using default @KdiceBot', { error: err.message });
+  });
+
 // Handle Telegram updates via POST
 app.post(webhookPath, (req, res) => {
   bot.processUpdate(req.body);
@@ -213,7 +227,6 @@ bot.on('message', (msg) => {
   else if (msg.text) {
     // Normalize the command by trimming and converting to lowercase
     const command = msg.text.trim().toLowerCase();
-    const botUsername = (await bot.getMe()).username.toLowerCase();
     const joinCommandPattern = new RegExp(`^/join(@${botUsername})?(\\s|$)`);
     
     if (joinCommandPattern.test(command)) {
@@ -315,7 +328,7 @@ bot.on('callback_query', (callbackQuery) => {
     
     // Announce the game creation without Game ID
     bot.sendMessage(chatId, 
-      `${creatorName} created a new game with $${stakeValue}/point stake!\n\nOther players type /join to join this game.`);
+      `${creatorName} created a new game with $${stakeValue}/point stake!\n\nA private message to ${creatorName} has been sent to open the game. Other players type /join to join this game.`);
     
     // Send a private message to the creator with the direct link (optional)
     bot.sendMessage(creatorId, `You created a game with $${stakeValue}/point stake. Wait for others to join!`, {
@@ -330,6 +343,7 @@ bot.on('callback_query', (callbackQuery) => {
     const gameId = parts[2];
     const joinerId = parts[3];
     const joinerName = decodeURIComponent(parts[4]);
+    const chatId = callbackQuery.message.chat.id; // Get chatId from callback context
     
     const game = activeGames[gameId];
     
@@ -347,15 +361,46 @@ bot.on('callback_query', (callbackQuery) => {
     if (game.addPlayer(`tg_${joinerId}`, joinerName)) {
       bot.answerCallbackQuery(callbackQuery.id, { text: "Joined the game successfully!" });
       
+      // Send a private message to the joiner with the direct link
+      bot.sendMessage(joinerId, `You joined ${game.players[0].name}'s game. Click below to open it:`, {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
+          ]]
+        }
+      }).then(() => {
+        logger.info('Sent private join message to', { joinerId, joinerName, gameId });
+      }).catch(err => {
+        logger.error('Failed to send private message to joiner', { error: err.message });
+      });
+      
+      // Send group message notifying others
+      const creatorName = game.players[0].name;
+      bot.sendMessage(chatId, `I sent ${joinerName} a private message to join the game created by ${creatorName}.`, {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: "View Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
+          ]]
+        }
+      }).then(() => {
+        logger.info('Sent group notification for join', { chatId, joinerName, creatorName });
+      }).catch(err => {
+        logger.error('Failed to send group notification', { error: err.message });
+      });
+      
       // Announce the player joining with an inline button to start the game
       if (game.players.length === 2) { // Start game when 2 players join
         bot.sendMessage(chatId, 
-          `${joinerName} joined ${game.players[0].name}'s game! The game can now begin.`, {
+          `${joinerName} joined ${creatorName}'s game! The game can now begin.`, {
           reply_markup: {
             inline_keyboard: [[
               { text: "Start Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}&stake=${game.baseStakeValue}` } }
             ]]
           }
+        }).then(() => {
+          logger.info('Sent game start message to chat', { chatId, gameId });
+        }).catch(err => {
+          logger.error('Failed to send game start message', { chatId, gameId, error: err.message });
         });
         
         // Notify all players via Socket.IO to start the game
@@ -364,17 +409,12 @@ bot.on('callback_query', (callbackQuery) => {
           playerId: game.players[0].id // Start with creator's turn
         });
       } else {
-        bot.sendMessage(chatId, `${joinerName} joined ${game.players[0].name}'s game! Waiting for more players...`);
+        bot.sendMessage(chatId, `${joinerName} joined ${creatorName}'s game! Waiting for more players...`).then(() => {
+          logger.info('Sent waiting for players message', { chatId, gameId });
+        }).catch(err => {
+          logger.error('Failed to send waiting for players message', { chatId, gameId, error: err.message });
+        });
       }
-      
-      // Send a private message to the joiner with the direct link
-      bot.sendMessage(joinerId, `You joined ${game.players[0].name}'s game. Click below to open it:`, {
-        reply_markup: {
-          inline_keyboard: [[
-            { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
-          ]]
-        }
-      }).catch(err => logger.error('Failed to send private message to joiner', err));
       
       // Notify all connected clients about the new player
       io.to(gameId).emit('playerJoined', {
@@ -384,7 +424,7 @@ bot.on('callback_query', (callbackQuery) => {
     } else {
       bot.answerCallbackQuery(callbackQuery.id, { text: "Failed to join game!" });
     }
-  }
+  } 
 });
 
 // Function to update player stats
