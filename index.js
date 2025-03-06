@@ -268,9 +268,9 @@ bot.on('message', (msg) => {
 bot.on('callback_query', (callbackQuery) => {
   const data = callbackQuery.data;
   const chatId = callbackQuery.message.chat.id;
-  
+
   // Handle game creation with stake selection
-  else if (data.startsWith('create_game_')) {
+  if (data.startsWith('create_game_')) {
     const parts = data.split('_');
     const stakeValue = parseInt(parts[2]);
     const creatorId = parts[3];
@@ -304,10 +304,7 @@ bot.on('callback_query', (callbackQuery) => {
         ]]
       }
     }).catch(err => logger.error('Failed to send private message to creator', err));
-  }
-  
-  // Handle game joining
-  else if (data.startsWith('join_game_')) {
+  } else if (data.startsWith('join_game_')) {
     const parts = data.split('_');
     const gameId = parts[2];
     const joinerId = parts[3];
@@ -872,37 +869,37 @@ io.on('connection', (socket) => {
   });
   
   // Handle ending the game
-  socket.on('endGame', ({ gameId }) => {
-    // Check if the game exists
-    if (!activeGames[gameId]) {
-      socket.emit('error', { message: 'Game not found' });
-      return;
-    }
-    
-    // Get the game instance
-    const game = activeGames[gameId];
-    
-    // End the game
-    const result = game.endGame();
-    
-    if (!result.success) {
-      socket.emit('error', { message: 'Failed to end game' });
-      return;
-    }
-    
-    logger.info('Game ended', { gameId });
-    
-    // Notify all players
-    io.to(gameId).emit('gameEnded', {
-      state: game.getGameState(),
-      leaderboard: result.leaderboard
-    });
-    
-    // Post leaderboard to group chat if from there
-    if (game.originChatId) {
-      postLeaderboard(gameId);
-    }
+socket.on('endGame', ({ gameId }) => {
+  // Check if the game exists
+  if (!activeGames[gameId]) {
+    socket.emit('error', { message: 'Game not found' });
+    return;
+  }
+  
+  // Get the game instance
+  const game = activeGames[gameId];
+  
+  // End the game
+  const result = game.endGame();
+  
+  if (!result.success) {
+    socket.emit('error', { message: 'Failed to end game' });
+    return;
+  }
+  
+  logger.info('Game ended', { gameId });
+  
+  // Notify all players
+  io.to(gameId).emit('gameEnded', {
+    state: game.getGameState(),
+    leaderboard: result.leaderboard
   });
+  
+  // Post leaderboard to group chat if from there
+  if (game.originChatId) {
+    postLeaderboard(gameId);
+  }
+});
   
   // Handle player leaving a game
   socket.on('leaveGame', ({ gameId, playerId }) => {
