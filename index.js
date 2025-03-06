@@ -45,20 +45,6 @@ const bot = new TelegramBot(process.env.BOT_TOKEN, { webHook: true });
 const webhookPath = `/bot${process.env.BOT_TOKEN}`;
 bot.setWebHook(`https://kdice.onrender.com${webhookPath}`); // Set webhook to Render URL
 
-// Fetch the bot's username on initialization
-let botUsername = 'KdiceBot'; // Default fallback matches @KdiceBot
-bot.getMe()
-  .then(botInfo => {
-    botUsername = botInfo.username.toLowerCase();
-    logger.info('Bot username fetched successfully', { botUsername });
-    if (botUsername !== 'kdicebot') {
-      logger.warn('Bot username does not match expected @KdiceBot', { fetchedUsername: botUsername });
-    }
-  })
-  .catch(err => {
-    logger.error('Failed to fetch bot username, using default @KdiceBot', { error: err.message });
-  });
-
 // Handle Telegram updates via POST
 app.post(webhookPath, (req, res) => {
   bot.processUpdate(req.body);
@@ -130,7 +116,7 @@ function getScoreText(chatId) {
   
   // Get all players who have played in this chat
   const chatPlayers = Object.values(playerStats)
-    .filter(player => player.chatIds && player.chatIds.includes(chatId.toString())) // Ensure chatId is string
+    .filter(player => player.chatIds && player.chatIds.includes(chatId))
     .sort((a, b) => b.points - a.points);
   
   if (chatPlayers.length === 0) {
@@ -142,7 +128,7 @@ function getScoreText(chatId) {
     const pointsDisplay = player.points >= 0 ? `+${player.points}` : player.points;
     const dollarsDisplay = player.dollars >= 0 ? `+$${player.dollars}` : `-$${Math.abs(player.dollars)}`;
     
-    scoreText += `${index + 1}. *${player.name}*: ${pointsDisplay} pts ${dollarsDisplay}\n`;
+    scoreText += `${index + 1}. *${player.name}*: ${pointsDisplay} pts (${player.wins}W/${player.losses}L) ${dollarsDisplay}\n`;
     scoreText += `   Rounds: ${player.rounds} | Win Rate: ${winRate} pts/round\n\n`;
   });
   
@@ -224,77 +210,57 @@ bot.on('message', (msg) => {
   }
   
   // Handle join game command for groups
-  else if (msg.text) {
-    // Normalize the command by trimming and converting to lowercase
-    const command = msg.text.trim().toLowerCase();
-    const joinCommandPattern = new RegExp(`^/join(@${botUsername})?(\\s|$)`);
+  else if (msg.text && (msg.text === '/join' || msg.text.startsWith('/join@'))) {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    const userName = msg.from.first_name || 'Player';
     
-    if (joinCommandPattern.test(command)) {
-      const chatId = msg.chat.id;
-      const userId = msg.from.id;
-      const userName = msg.from.first_name || msg.from.username || 'Player';
-      
-      logger.info('Processing /join command', { chatId, userId, userName, rawCommand: msg.text });
-      
-      // Find active games from this group chat
-      const activeGroupGames = Object.entries(activeGames)
-        .filter(([_, game]) => game.originChatId === chatId && !game.gameStarted && !game.gameEnded)
-        .map(([id, game]) => ({
-          id,
-          creator: game.players[0]?.name || 'Unknown',
-          stakeValue: game.baseStakeValue
-        }));
-      
-      if (activeGroupGames.length === 0) {
-        bot.sendMessage(chatId, "No active games in this chat. Create one with /creategame first!").then(() => {
-          logger.info('Sent no active games message', { chatId, userId });
-        }).catch(err => {
-          logger.error('Failed to send no active games message', { chatId, userId, error: err.message });
-        });
-        return;
-      }
-      
-      // Check if the user is already in a game
-      const alreadyInGame = activeGroupGames.some(game => 
-        activeGames[game.id].players.some(p => p.id === `tg_${userId}`)
-      );
-      
-      if (alreadyInGame) {
-        // If already in a game, just provide the link to open it
-        const gameId = activeGroupGames.find(game => 
-          activeGames[game.id].players.some(p => p.id === `tg_${userId}`)
-        ).id;
-        
-        bot.sendMessage(chatId, `${userName}, you're already in a game. Click below to open it:`, {
-          reply_markup: {
-            inline_keyboard: [[
-              { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
-            ]]
-          }
-        }).then(() => {
-          logger.info('Sent already in game message', { chatId, userId, gameId });
-        }).catch(err => {
-          logger.error('Failed to send already in game message', { chatId, userId, gameId, error: err.message });
-        });
-        return;
-      }
-      
-      // Create keyboard with available games
-      const keyboard = activeGroupGames.map(game => [{
-        text: `Join ${game.creator}'s game ($${game.stakeValue}/point)`,
-        callback_data: `join_game_${game.id}_${userId}_${encodeURIComponent(userName)}`
-      }]);
-      
-      bot.sendMessage(chatId, `Choose a game to join:\n\nNote: If you haven't already, please start a private conversation with @KdiceBot to receive game links.`, {
-        reply_markup: {
-          inline_keyboard: keyboard
-        }
-      }).then(() => {
-        logger.info('Sent join options to chat', { chatId, userName, gameOptions: activeGroupGames.length });
-      }).catch(err => {
-        logger.error('Failed to send join options', { chatId, userName, error: err.message });
-      });
+    // Find active games from this group chat
+    const activeGroupGames = Object.entries(activeGames)
+      .filter(([_, game]) => game.originChatId === chatId && !game.gameStarted && !game.gameEnded)
+      .map(([id, game]) => ({
+        id,
+        creator: game.players[0]?.name || 'Unknown',
+        stakeValue: game.baseStakeValue
+      }));
+    
+    if (activeGroupGames.length === 0) {
+      bot.sendMessage(chatId, "No active games in this chat. Create one with /creategame first!");
+      return;
     }
+    
+    // Check if the user is already in a game
+    const alreadyInGame = activeGroupGames.some(game => 
+      activeGames[game.id].players.some(p => p.id === `tg_${userId}`)
+    );
+    
+    if (alreadyInGame) {
+      // If already in a game, just provide the link to open it
+      const gameId = activeGroupGames.find(game => 
+        activeGames[game.id].players.some(p => p.id === `tg_${userId}`)
+      ).id;
+      
+      bot.sendMessage(chatId, `${userName}, you're already in a game. Click below to open it:`, {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}` } }
+          ]]
+        }
+      });
+      return;
+    }
+    
+    // Create keyboard with available games
+    const keyboard = activeGroupGames.map(game => [{
+      text: `Join ${game.creator}'s game ($${game.stakeValue}/point)`,
+      callback_data: `join_game_${game.id}_${userId}_${encodeURIComponent(userName)}`
+    }]);
+    
+    bot.sendMessage(chatId, "Choose a game to join:", {
+      reply_markup: {
+        inline_keyboard: keyboard
+      }
+    });
   }
 });
 
@@ -302,7 +268,7 @@ bot.on('message', (msg) => {
 bot.on('callback_query', (callbackQuery) => {
   const data = callbackQuery.data;
   const chatId = callbackQuery.message.chat.id;
-
+  
   // Handle game creation with stake selection
   if (data.startsWith('create_game_')) {
     const parts = data.split('_');
@@ -315,7 +281,7 @@ bot.on('callback_query', (callbackQuery) => {
     
     // Create a new game with the selected stake
     const game = new DiceGame(gameId);
-    game.originChatId = chatId; // Track the group chat
+    game.originChatId = chatId;
     game.baseStakeValue = stakeValue;
     game.addPlayer(`tg_${creatorId}`, creatorName);
     
@@ -326,24 +292,26 @@ bot.on('callback_query', (callbackQuery) => {
     // Answer the callback query
     bot.answerCallbackQuery(callbackQuery.id, { text: `Game created with $${stakeValue} stake!` });
     
-    // Announce the game creation without Game ID
+    // Announce the game creation with join instructions
     bot.sendMessage(chatId, 
-      `${creatorName} created a new game with $${stakeValue}/point stake!\n\nA private message to ${creatorName} has been sent to open the game. Other players type /join to join this game.`);
-    
-    // Send a private message to the creator with the direct link (optional)
-    bot.sendMessage(creatorId, `You created a game with $${stakeValue}/point stake. Wait for others to join!`, {
+      `${creatorName} created a new game with $${stakeValue}/point stake!\n\nGame ID: ${gameId}\n\nOther players type /join to join this game.`);
+      
+    // Send a private message to the creator with the direct link
+    bot.sendMessage(creatorId, `You created a game with $${stakeValue}/point stake. Click below to open it:`, {
       reply_markup: {
         inline_keyboard: [[
-          { text: "Open Your Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
+          { text: "Open Your Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}` } }
         ]]
       }
     }).catch(err => logger.error('Failed to send private message to creator', err));
-  } else if (data.startsWith('join_game_')) {
+  }
+  
+  // Handle game joining
+  else if (data.startsWith('join_game_')) {
     const parts = data.split('_');
     const gameId = parts[2];
     const joinerId = parts[3];
     const joinerName = decodeURIComponent(parts[4]);
-    const chatId = callbackQuery.message.chat.id; // Get chatId from callback context
     
     const game = activeGames[gameId];
     
@@ -361,84 +329,18 @@ bot.on('callback_query', (callbackQuery) => {
     if (game.addPlayer(`tg_${joinerId}`, joinerName)) {
       bot.answerCallbackQuery(callbackQuery.id, { text: "Joined the game successfully!" });
       
-      // Send a private message to the joiner with the direct link
-bot.sendMessage(joinerId, `You joined ${game.players[0].name}'s game. Click below to open it:`, {
-  reply_markup: {
-    inline_keyboard: [[
-      { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
-    ]]
-  }
-}).then(() => {
-  logger.info('Sent private join message to', { joinerId, joinerName, gameId });
-  // Notify the joiner in the group chat that a private message has been sent
-  bot.sendMessage(chatId, `${joinerName}, a private message to open the game has been sent to you.`, {
-    reply_markup: {
-      inline_keyboard: [[
-        { text: "View Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
-      ]]
-    }
-  }).then(() => {
-    logger.info('Notified joiner in group about private message', { chatId, joinerName });
-  }).catch(err => {
-    logger.error('Failed to notify joiner in group about private message', { error: err.message });
-  });
-}).catch(err => {
-  logger.error('Failed to send private message to joiner', { error: err.message });
-  // Fallback: Send the join link in the group chat if private message fails
-  bot.sendMessage(chatId, `${joinerName}, I couldn't send you a private message. Please start a private conversation with @KdiceBot and click below to join ${game.players[0].name}'s game:`, {
-    reply_markup: {
-      inline_keyboard: [[
-        { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
-      ]]
-    }
-  }).then(() => {
-    logger.info('Sent fallback join link in group', { chatId, joinerName, gameId });
-  }).catch(fallbackErr => {
-    logger.error('Failed to send fallback join link in group', { chatId, joinerName, error: fallbackErr.message });
-  });
-});
-    
-// Send group message notifying others
-const creatorName = game.players[0].name;
-bot.sendMessage(chatId, `I sent ${joinerName} a private message to join the game created by ${creatorName}.`, {
-  reply_markup: {
-    inline_keyboard: [[
-      { text: "View Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
-    ]]
-  }
-}).then(() => {
-  logger.info('Sent group notification for join', { chatId, joinerName, creatorName });
-}).catch(err => {
-  logger.error('Failed to send group notification', { error: err.message });
-});
+      // Announce the player joining
+      bot.sendMessage(chatId, 
+        `${joinerName} joined ${game.players[0].name}'s game! The game can now begin.`);
       
-      // Announce the player joining with an inline button to start the game
-      if (game.players.length === 2) { // Start game when 2 players join
-        bot.sendMessage(chatId, 
-          `${joinerName} joined ${creatorName}'s game! The game can now begin.`, {
-          reply_markup: {
-            inline_keyboard: [[
-              { text: "Start Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}&stake=${game.baseStakeValue}` } }
-            ]]
-          }
-        }).then(() => {
-          logger.info('Sent game start message to chat', { chatId, gameId });
-        }).catch(err => {
-          logger.error('Failed to send game start message', { chatId, gameId, error: err.message });
-        });
-        
-        // Notify all players via Socket.IO to start the game
-        io.to(gameId).emit('gameStarted', {
-          state: game.getGameState(),
-          playerId: game.players[0].id // Start with creator's turn
-        });
-      } else {
-        bot.sendMessage(chatId, `${joinerName} joined ${creatorName}'s game! Waiting for more players...`).then(() => {
-          logger.info('Sent waiting for players message', { chatId, gameId });
-        }).catch(err => {
-          logger.error('Failed to send waiting for players message', { chatId, gameId, error: err.message });
-        });
-      }
+      // Send a private message to the joiner with the direct link
+      bot.sendMessage(joinerId, `You joined ${game.players[0].name}'s game. Click below to open it:`, {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}` } }
+          ]]
+        }
+      }).catch(err => logger.error('Failed to send private message to joiner', err));
       
       // Notify all connected clients about the new player
       io.to(gameId).emit('playerJoined', {
@@ -448,7 +350,7 @@ bot.sendMessage(chatId, `I sent ${joinerName} a private message to join the game
     } else {
       bot.answerCallbackQuery(callbackQuery.id, { text: "Failed to join game!" });
     }
-  } 
+  }
 });
 
 // Function to update player stats
@@ -457,7 +359,7 @@ function updatePlayerStats(winner, loser, stakes, gameId) {
   if (!playerStats[winner.id]) {
     playerStats[winner.id] = { 
       name: winner.name, 
-      wins: 0,
+      wins: 0, 
       losses: 0,
       points: 0,
       rounds: 0,
@@ -468,7 +370,7 @@ function updatePlayerStats(winner, loser, stakes, gameId) {
   if (!playerStats[loser.id]) {
     playerStats[loser.id] = { 
       name: loser.name, 
-      wins: 0,
+      wins: 0, 
       losses: 0,
       points: 0,
       rounds: 0,
@@ -507,9 +409,7 @@ function updatePlayerStats(winner, loser, stakes, gameId) {
     loser: loser.name,
     stakes: stakes,
     winnerNewPoints: playerStats[winner.id].points,
-    loserNewPoints: playerStats[loser.id].points,
-    winnerChatIds: playerStats[winner.id].chatIds,
-    loserChatIds: playerStats[loser.id].chatIds
+    loserNewPoints: playerStats[loser.id].points
   });
   
   // If game came from a group chat, announce the result
@@ -538,8 +438,16 @@ function postLeaderboard(gameId) {
         name: game.players.find(p => p.id === id)?.name || 'Unknown',
         points: game.playerScores[id] || 0,
         rounds: game.roundHistory.length || 0,
-        dollars: (game.playerScores[id] || 0) * game.baseStakeValue
+        dollars: (game.playerScores[id] || 0) * game.baseStakeValue,
+        wins: 0,
+        losses: 0
       };
+      
+      // Count wins and losses from game history if they're not tracked
+      if (!stats.wins || !stats.losses) {
+        stats.wins = game.roundHistory.filter(r => r.winner === id).length;
+        stats.losses = game.roundHistory.filter(r => r.loser === id).length;
+      }
       
       return stats;
     })
@@ -555,7 +463,7 @@ function postLeaderboard(gameId) {
       const pointsText = player.points >= 0 ? `+${player.points}` : `${player.points}`;
       
       leaderboardText += `${index + 1}. *${player.name}*: ${pointsText} points (${pointsPerRound} pts/round) ${dollarText}\n`;
-      leaderboardText += `   Rounds Played: ${player.rounds}\n\n`;
+      leaderboardText += `   Rounds Played: ${player.rounds} | Win/Loss: ${player.wins}W/${player.losses}L\n\n`;
     });
   } else {
     leaderboardText += "No player statistics available yet.";
@@ -948,78 +856,37 @@ io.on('connection', (socket) => {
   });
   
   // Handle ending the game
-  // Add this at the top of index.js, outside io.on('connection', ...)
-const endedGames = new Map(); // Store leaderboard data temporarily
-
-// Inside io.on('connection', (socket) => { ... })
-socket.on('endGame', ({ gameId }) => {
-  logger.info('Received endGame request', { gameId });
-
-  let endGameData;
-  if (activeGames[gameId]) {
+  socket.on('endGame', ({ gameId }) => {
+    // Check if the game exists
+    if (!activeGames[gameId]) {
+      socket.emit('error', { message: 'Game not found' });
+      return;
+    }
+    
+    // Get the game instance
     const game = activeGames[gameId];
+    
+    // End the game
     const result = game.endGame();
-
+    
     if (!result.success) {
-      logger.info('Failed to end game', { gameId });
       socket.emit('error', { message: 'Failed to end game' });
       return;
     }
-
+    
     logger.info('Game ended', { gameId });
-    endGameData = {
+    
+    // Notify all players
+    io.to(gameId).emit('gameEnded', {
       state: game.getGameState(),
-      leaderboard: result.leaderboard,
-      endedBy: socket.id
-    };
-
-    // Store leaderboard data before cleanup
-    endedGames.set(gameId, {
-      data: endGameData,
-      timestamp: Date.now()
+      leaderboard: result.leaderboard
     });
-  } else if (endedGames.has(gameId)) {
-    // Game already ended, use cached data
-    logger.info('Game already ended, using cached data', { gameId });
-    endGameData = endedGames.get(gameId).data;
-  } else {
-    // No data available, emit minimal response (shouldn’t happen with cache)
-    logger.info('No game or cached data found', { gameId });
-    endGameData = {
-      state: {},
-      leaderboard: [],
-      endedBy: socket.id
-    };
-  }
-
-  // Emit to room and directly to requester
-  io.to(gameId).emit('gameEnded', endGameData);
-  socket.emit('gameEnded', endGameData);
-
-  // Cleanup active game and schedule cache removal
-  if (activeGames[gameId]) {
-    setTimeout(() => {
-      if (activeGames[gameId]) {
-        if (game.originChatId) {
-          postLeaderboard(gameId);
-        } else {
-          delete activeGames[gameId];
-          delete gameOrigins[gameId];
-        }
-        logger.info('Game cleanup completed', { gameId });
-      } else {
-        logger.info('Game already cleaned up', { gameId });
-      }
-      // Remove cached data after longer delay (e.g., 10s)
-      setTimeout(() => {
-        if (endedGames.has(gameId)) {
-          endedGames.delete(gameId);
-          logger.info('Cached game data removed', { gameId });
-        }
-      }, 8000); // 8s after cleanup, total 10s from end
-    }, 2000);
-  }
-});
+    
+    // Post leaderboard to group chat if from there
+    if (game.originChatId) {
+      postLeaderboard(gameId);
+    }
+  });
   
   // Handle player leaving a game
   socket.on('leaveGame', ({ gameId, playerId }) => {

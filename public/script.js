@@ -57,7 +57,6 @@ let game = {
   roundHistory: [], // Track round results
   players: [],     // Players in the game
   gameEnder: null  // Track who ended the game
-  autoJoinGameId: null // Track auto-join attempts
 };
 
 // DOM Elements
@@ -74,48 +73,33 @@ const screens = {
 function checkForGameJoin() {
   const urlParams = new URLSearchParams(window.location.search);
   const gameIdToJoin = urlParams.get('join');
-  const chatId = urlParams.get('chatId');
-  const stake = urlParams.get('stake');
   
   if (gameIdToJoin) {
-    console.log('Auto-joining game', { gameId: gameIdToJoin, chatId, stake });
-    game.autoJoinGameId = gameIdToJoin;
     document.getElementById('gameIdInput').value = gameIdToJoin;
-    if (chatId) {
-      game.originChatId = chatId;
-    }
-    if (stake) {
-      game.selectedStake = parseInt(stake);
-      game.baseStakeValue = parseInt(stake);
-      document.querySelector(`.stake-button[data-stake="${stake}"]`)?.classList.add('selected');
-      document.querySelectorAll('.stake-button').forEach(btn => {
-        if (btn.dataset.stake !== stake) btn.classList.remove('selected');
-      });
-    }
+    // Auto join after a short delay
     setTimeout(() => {
-      const joinBtn = document.getElementById('joinGameBtn');
-      if (joinBtn) {
-        joinBtn.click();
-      } else {
-        console.error('joinGameBtn not found');
-      }
+      document.getElementById('joinGameBtn').click();
     }, 500);
   }
 
+  // Also check cookies
   const joinGameCookie = getCookie('joinGame');
   if (joinGameCookie) {
-    game.autoJoinGameId = joinGameCookie;
     document.getElementById('gameIdInput').value = joinGameCookie;
+    // Auto join after a short delay
     setTimeout(() => {
-      const joinBtn = document.getElementById('joinGameBtn');
-      if (joinBtn) {
-        joinBtn.click();
-        document.cookie = "joinGame=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-      } else {
-        console.error('joinGameBtn not found');
-      }
+      document.getElementById('joinGameBtn').click();
+      // Clear the cookie after joining
+      document.cookie = "joinGame=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     }, 500);
   }
+}
+
+// Helper function to get a cookie by name
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
 }
 
 // Helper function to switch screens
@@ -622,32 +606,14 @@ document.getElementById('nextRoundBtn').addEventListener('click', () => {
 });
 
 // Handle "End Game" button
-document.getElementById('endGameBtn').addEventListener('click', (e) => {
-  console.log('End Game button clicked', { gameId: game.gameId, playerId: game.playerId });
-  const btn = e.target;
-  btn.disabled = true;
-
-  if (!game.gameId) {
-    console.log('No valid gameId, cannot end game');
-    alert('Game session not found. Returning to home.');
-    showScreen('welcome');
-    btn.disabled = false;
-    return;
-  }
-
-  socket.emit('joinGame', { gameId: game.gameId, playerName: game.playerName, playerId: game.playerId }); // Re-join room
+document.getElementById('endGameBtn').addEventListener('click', () => {
   socket.emit('endGame', {
     gameId: game.gameId,
     playerId: game.playerId
   });
-  console.log('endGame event emitted', { gameId: game.gameId });
-
+  
+  // Record who ended the game
   game.gameEnder = game.playerId;
-
-  socket.once('error', ({ message }) => {
-    btn.disabled = false;
-    alert(message);
-  });
 });
 
 // Return to home screen
@@ -750,25 +716,31 @@ document.getElementById('challengeBtn').addEventListener('click', () => {
 socket.on('gameCreated', ({ gameId, state }) => {
   game.gameId = gameId;
   updateGameState(state);
+  
+  // Display the game ID for sharing
   document.getElementById('gameIdDisplay').textContent = gameId;
+  
+  // Update lobby player list
   updateLobbyPlayerList();
+  
+  // Switch to lobby screen
   showScreen('lobby');
-  game.autoJoinGameId = null; // Clear after success
 });
 
 socket.on('gameJoined', ({ gameId, state, alreadyJoined }) => {
-  console.log('Game joined', { gameId, alreadyJoined, playerId: game.playerId });
   game.gameId = gameId;
   updateGameState(state);
-  game.players = state.players || game.players;
-  game.baseStakeValue = state.baseStakeValue || game.baseStakeValue;
+  
+  // Update lobby player list
   updateLobbyPlayerList();
-  if (alreadyJoined && gameId !== game.autoJoinGameId) {
+  
+  // Show notification if we were already in the game
+  if (alreadyJoined) {
     alert("You're already in this game!");
-  } else {
-    showScreen('lobby');
   }
-  game.autoJoinGameId = null;
+  
+  // Switch to lobby screen
+  showScreen('lobby');
 });
 
 socket.on('playerJoined', ({ player, state }) => {
@@ -780,12 +752,19 @@ socket.on('playerJoined', ({ player, state }) => {
 });
 
 socket.on('gameStarted', ({ state, playerId }) => {
-  console.log('Game started received', { gameId: game.gameId, playerId, localPlayerId: game.playerId });
-  updateGameState(state);
-  game.maxCount = state.players.length * 5;
-  initializeBidButtons();
-  updateGameUI();
-  showScreen('game');
+  // Only update if this event is for me
+  if (playerId === game.playerId) {
+    updateGameState(state);
+    
+    // Calculate max count based on number of players
+    game.maxCount = state.players.length * 5; // 5 dice per player
+    
+    // Initialize bid buttons
+    initializeBidButtons();
+    
+    updateGameUI();
+    showScreen('game');
+  }
 });
 
 socket.on('gameUpdate', ({ state }) => {
@@ -1005,46 +984,95 @@ socket.on('roundStarted', ({ state, playerId, round }) => {
   }
 });
 
-socket.on('endGame', ({ state, leaderboard, endedBy }) => {
-  console.log('Received gameEnded event', { gameId: game.gameId, endedBy });
+socket.on('gameEnded', ({ state, leaderboard, endedBy }) => {
+  // Store who ended the game
   game.gameEnder = endedBy || game.gameEnder;
-  let enderPlayer = game.players.find(p => p.id === game.gameEnder || p.id === endedBy) || { name: 'Someone' };
-  const enderName = enderPlayer.name;
-
+  
+  // Get the player object directly from the list of players in our game state
+  let enderPlayer = null;
+  
+  // Search for the player who ended the game
+  for (const player of game.players) {
+    // Check player id against socket.id (which is what endedBy contains) or against game.gameEnder
+    if (player.id === game.gameEnder || player.id === endedBy) {
+      enderPlayer = player;
+      break;
+    }
+  }
+  
+  // Find the name of the player who ended the game, with better fallback
+  const enderName = enderPlayer ? enderPlayer.name : (
+    game.players.find(p => p.id === game.gameEnder || p.id === endedBy)?.name || 
+    game.players.find(p => p.id === socket.id)?.name || 
+    'Someone'
+  );
+  
+  // Log who ended the game for debugging
+  console.log('Game ended by:', { 
+    endedBy, 
+    gameEnder: game.gameEnder, 
+    enderName, 
+    players: game.players.map(p => ({id: p.id, name: p.name}))
+  });
+  
+  // Display leaderboard
   const leaderboardElem = document.getElementById('leaderboardDisplay');
   leaderboardElem.innerHTML = '<h3>Game Leaderboard</h3>';
-
+  
   const leaderTable = document.createElement('table');
   leaderTable.className = 'leaderboard-table';
+  
+  // Create table header
   const header = document.createElement('tr');
-  header.innerHTML = `<th>Player</th><th>Points</th><th>Money</th>`;
+  header.innerHTML = `
+    <th>Player</th>
+    <th>Points</th>
+    <th>Money</th>
+  `;
   leaderTable.appendChild(header);
-
+  
+  // Add each player
   leaderboard.forEach(player => {
+    const row = document.createElement('tr');
     const dollars = player.points * (state.baseStakeValue || 100);
     const dollarsDisplay = dollars >= 0 ? `+${dollars}` : `-${Math.abs(dollars)}`;
-    const row = document.createElement('tr');
-    row.innerHTML = `<td>${player.name}${player.id === game.playerId ? ' (You)' : ''}</td><td>${player.points > 0 ? '+' : ''}${player.points}</td><td>${dollarsDisplay}</td>`;
+    
+    row.innerHTML = `
+      <td>${player.name}${player.id === game.playerId ? ' (You)' : ''}</td>
+      <td>${player.points > 0 ? '+' : ''}${player.points}</td>
+      <td>${dollarsDisplay}</td>
+    `;
     leaderTable.appendChild(row);
   });
-
+  
   leaderboardElem.appendChild(leaderTable);
-
-  let gameEndMessage = game.gameEnder === game.playerId ? `You ended the game.` : `${enderName} ended the game.`;
+  
+  // Show appropriate message based on who ended the game
+  let gameEndMessage;
+  if (game.gameEnder === game.playerId) {
+    gameEndMessage = `You ended the game.`;
+  } else {
+    gameEndMessage = `${enderName} was a chicken and left the game.`;
+  }
+  
+  // Show goodbye message
   document.getElementById('gameEndText').innerHTML = `
     <p>${gameEndMessage}</p>
     <p>A full leaderboard has been posted to the group chat.</p>
   `;
-
+  
+  // Add a close app button
   const closeBtn = document.createElement('button');
   closeBtn.className = 'button';
   closeBtn.textContent = 'Close App';
-  closeBtn.addEventListener('click', () => tgApp.close());
+  closeBtn.addEventListener('click', () => {
+    tgApp.close();
+  });
+  
   document.getElementById('gameEndText').appendChild(closeBtn);
-
+  
+  // Show game end screen
   showScreen('gameEnd');
-
-  game.gameId = null;
 });
 
 socket.on('playerLeft', ({ playerId, state }) => {
