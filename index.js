@@ -948,37 +948,39 @@ io.on('connection', (socket) => {
   });
   
   // Handle ending the game
-socket.on('endGame', ({ gameId }) => {
-  // Check if the game exists
-  if (!activeGames[gameId]) {
-    socket.emit('error', { message: 'Game not found' });
-    return;
-  }
+  socket.on('endGame', ({ gameId }) => {
+    if (!activeGames[gameId]) {
+      socket.emit('error', { message: 'Game not found' });
+      return;
+    }
   
-  // Get the game instance
-  const game = activeGames[gameId];
+    const game = activeGames[gameId];
+    const result = game.endGame();
   
-  // End the game
-  const result = game.endGame();
+    if (!result.success) {
+      socket.emit('error', { message: 'Failed to end game' });
+      return;
+    }
   
-  if (!result.success) {
-    socket.emit('error', { message: 'Failed to end game' });
-    return;
-  }
+    logger.info('Game ended', { gameId });
   
-  logger.info('Game ended', { gameId });
+    // Notify all players
+    io.to(gameId).emit('gameEnded', {
+      state: game.getGameState(),
+      leaderboard: result.leaderboard,
+      endedBy: socket.id
+    });
   
-  // Notify all players
-  io.to(gameId).emit('gameEnded', {
-    state: game.getGameState(),
-    leaderboard: result.leaderboard
+    // Delay cleanup to ensure clients process the event
+    setTimeout(() => {
+      if (game.originChatId) {
+        postLeaderboard(gameId);
+      } else {
+        delete activeGames[gameId];
+        delete gameOrigins[gameId];
+      }
+    }, 2000);
   });
-  
-  // Post leaderboard to group chat if from there
-  if (game.originChatId) {
-    postLeaderboard(gameId);
-  }
-});
   
   // Handle player leaving a game
   socket.on('leaveGame', ({ gameId, playerId }) => {

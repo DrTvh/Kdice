@@ -615,14 +615,21 @@ document.getElementById('nextRoundBtn').addEventListener('click', () => {
 });
 
 // Handle "End Game" button
-document.getElementById('endGameBtn').addEventListener('click', () => {
+document.getElementById('endGameBtn').addEventListener('click', (e) => {
+  const btn = e.target;
+  btn.disabled = true;
+
   socket.emit('endGame', {
     gameId: game.gameId,
     playerId: game.playerId
   });
-  
-  // Record who ended the game
+
   game.gameEnder = game.playerId;
+
+  socket.once('error', ({ message }) => {
+    btn.disabled = false;
+    alert(message);
+  });
 });
 
 // Return to home screen
@@ -999,29 +1006,19 @@ socket.on('roundStarted', ({ state, playerId, round }) => {
 });
 
 socket.on('endGame', ({ state, leaderboard, endedBy }) => {
-  // Store who ended the game
   game.gameEnder = endedBy || game.gameEnder;
-  let enderPlayer = game.players.find(p => p.id === game.gameEnder || p.id === endedBy) || game.players.find(p => p.id === socket.id);
-  const enderName = enderPlayer ? enderPlayer.name : 'Someone';
-  
-  // Log who ended the game for debugging
-  console.log('Game ended by:', { 
-    endedBy, 
-    gameEnder: game.gameEnder, 
-    enderName, 
-    players: game.players.map(p => ({id: p.id, name: p.name}))
-  });
-  
-  // Display leaderboard
+  let enderPlayer = game.players.find(p => p.id === game.gameEnder || p.id === endedBy) || { name: 'Someone' };
+  const enderName = enderPlayer.name;
+
   const leaderboardElem = document.getElementById('leaderboardDisplay');
   leaderboardElem.innerHTML = '<h3>Game Leaderboard</h3>';
-  
+
   const leaderTable = document.createElement('table');
   leaderTable.className = 'leaderboard-table';
   const header = document.createElement('tr');
   header.innerHTML = `<th>Player</th><th>Points</th><th>Money</th>`;
   leaderTable.appendChild(header);
-  
+
   leaderboard.forEach(player => {
     const dollars = player.points * (state.baseStakeValue || 100);
     const dollarsDisplay = dollars >= 0 ? `+${dollars}` : `-${Math.abs(dollars)}`;
@@ -1029,27 +1026,24 @@ socket.on('endGame', ({ state, leaderboard, endedBy }) => {
     row.innerHTML = `<td>${player.name}${player.id === game.playerId ? ' (You)' : ''}</td><td>${player.points > 0 ? '+' : ''}${player.points}</td><td>${dollarsDisplay}</td>`;
     leaderTable.appendChild(row);
   });
-  
+
   leaderboardElem.appendChild(leaderTable);
-  
-  let gameEndMessage = game.gameEnder === game.playerId ? `You ended the game.` : `${enderName} was a chicken and left the game.`;
+
+  let gameEndMessage = game.gameEnder === game.playerId ? `You ended the game.` : `${enderName} ended the game.`;
   document.getElementById('gameEndText').innerHTML = `
     <p>${gameEndMessage}</p>
     <p>A full leaderboard has been posted to the group chat.</p>
   `;
-  
+
   const closeBtn = document.createElement('button');
   closeBtn.className = 'button';
   closeBtn.textContent = 'Close App';
   closeBtn.addEventListener('click', () => tgApp.close());
   document.getElementById('gameEndText').appendChild(closeBtn);
-  
+
   showScreen('gameEnd');
-  
-  // Post leaderboard to group chat if from there
-  if (game.originChatId) {
-    postLeaderboard(game.gameId);
-  }
+
+  game.gameId = null;
 });
 
 socket.on('playerLeft', ({ playerId, state }) => {
