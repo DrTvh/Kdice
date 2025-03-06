@@ -73,23 +73,32 @@ const screens = {
 function checkForGameJoin() {
   const urlParams = new URLSearchParams(window.location.search);
   const gameIdToJoin = urlParams.get('join');
+  const chatId = urlParams.get('chatId');
+  const stake = urlParams.get('stake');
   
   if (gameIdToJoin) {
     document.getElementById('gameIdInput').value = gameIdToJoin;
-    // Auto join after a short delay
+    if (chatId) {
+      game.originChatId = chatId; // Store group chat ID for context
+    }
+    if (stake) {
+      game.selectedStake = parseInt(stake); // Preload stake value
+      game.baseStakeValue = parseInt(stake); // Ensure base stake is set
+      document.querySelector(`.stake-button[data-stake="${stake}"]`).classList.add('selected');
+      document.querySelectorAll('.stake-button').forEach(btn => {
+        if (btn.dataset.stake !== stake) btn.classList.remove('selected');
+      });
+    }
     setTimeout(() => {
       document.getElementById('joinGameBtn').click();
     }, 500);
   }
 
-  // Also check cookies
   const joinGameCookie = getCookie('joinGame');
   if (joinGameCookie) {
     document.getElementById('gameIdInput').value = joinGameCookie;
-    // Auto join after a short delay
     setTimeout(() => {
       document.getElementById('joinGameBtn').click();
-      // Clear the cookie after joining
       document.cookie = "joinGame=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     }, 500);
   }
@@ -731,16 +740,25 @@ socket.on('gameJoined', ({ gameId, state, alreadyJoined }) => {
   game.gameId = gameId;
   updateGameState(state);
   
-  // Update lobby player list
+  // Preload players and stake from state
+  game.players = state.players || game.players;
+  game.baseStakeValue = state.baseStakeValue || game.baseStakeValue;
+  
   updateLobbyPlayerList();
   
-  // Show notification if we were already in the game
   if (alreadyJoined) {
     alert("You're already in this game!");
   }
   
-  // Switch to lobby screen
   showScreen('lobby');
+  
+  // Auto-start if 2 players are present
+  if (game.players.length === 2) {
+    socket.emit('startGame', {
+      gameId: game.gameId,
+      playerId: game.playerId
+    });
+  }
 });
 
 socket.on('playerJoined', ({ player, state }) => {
@@ -752,14 +770,10 @@ socket.on('playerJoined', ({ player, state }) => {
 });
 
 socket.on('gameStarted', ({ state, playerId }) => {
-  // Only update if this event is for me
   if (playerId === game.playerId) {
     updateGameState(state);
     
-    // Calculate max count based on number of players
-    game.maxCount = state.players.length * 5; // 5 dice per player
-    
-    // Initialize bid buttons
+    game.maxCount = state.players.length * 5;
     initializeBidButtons();
     
     updateGameUI();
@@ -984,28 +998,11 @@ socket.on('roundStarted', ({ state, playerId, round }) => {
   }
 });
 
-socket.on('gameEnded', ({ state, leaderboard, endedBy }) => {
+socket.on('endGame', ({ state, leaderboard, endedBy }) => {
   // Store who ended the game
   game.gameEnder = endedBy || game.gameEnder;
-  
-  // Get the player object directly from the list of players in our game state
-  let enderPlayer = null;
-  
-  // Search for the player who ended the game
-  for (const player of game.players) {
-    // Check player id against socket.id (which is what endedBy contains) or against game.gameEnder
-    if (player.id === game.gameEnder || player.id === endedBy) {
-      enderPlayer = player;
-      break;
-    }
-  }
-  
-  // Find the name of the player who ended the game, with better fallback
-  const enderName = enderPlayer ? enderPlayer.name : (
-    game.players.find(p => p.id === game.gameEnder || p.id === endedBy)?.name || 
-    game.players.find(p => p.id === socket.id)?.name || 
-    'Someone'
-  );
+  let enderPlayer = game.players.find(p => p.id === game.gameEnder || p.id === endedBy) || game.players.find(p => p.id === socket.id);
+  const enderName = enderPlayer ? enderPlayer.name : 'Someone';
   
   // Log who ended the game for debugging
   console.log('Game ended by:', { 
@@ -1021,58 +1018,38 @@ socket.on('gameEnded', ({ state, leaderboard, endedBy }) => {
   
   const leaderTable = document.createElement('table');
   leaderTable.className = 'leaderboard-table';
-  
-  // Create table header
   const header = document.createElement('tr');
-  header.innerHTML = `
-    <th>Player</th>
-    <th>Points</th>
-    <th>Money</th>
-  `;
+  header.innerHTML = `<th>Player</th><th>Points</th><th>Money</th>`;
   leaderTable.appendChild(header);
   
-  // Add each player
   leaderboard.forEach(player => {
-    const row = document.createElement('tr');
     const dollars = player.points * (state.baseStakeValue || 100);
     const dollarsDisplay = dollars >= 0 ? `+${dollars}` : `-${Math.abs(dollars)}`;
-    
-    row.innerHTML = `
-      <td>${player.name}${player.id === game.playerId ? ' (You)' : ''}</td>
-      <td>${player.points > 0 ? '+' : ''}${player.points}</td>
-      <td>${dollarsDisplay}</td>
-    `;
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${player.name}${player.id === game.playerId ? ' (You)' : ''}</td><td>${player.points > 0 ? '+' : ''}${player.points}</td><td>${dollarsDisplay}</td>`;
     leaderTable.appendChild(row);
   });
   
   leaderboardElem.appendChild(leaderTable);
   
-  // Show appropriate message based on who ended the game
-  let gameEndMessage;
-  if (game.gameEnder === game.playerId) {
-    gameEndMessage = `You ended the game.`;
-  } else {
-    gameEndMessage = `${enderName} was a chicken and left the game.`;
-  }
-  
-  // Show goodbye message
+  let gameEndMessage = game.gameEnder === game.playerId ? `You ended the game.` : `${enderName} was a chicken and left the game.`;
   document.getElementById('gameEndText').innerHTML = `
     <p>${gameEndMessage}</p>
     <p>A full leaderboard has been posted to the group chat.</p>
   `;
   
-  // Add a close app button
   const closeBtn = document.createElement('button');
   closeBtn.className = 'button';
   closeBtn.textContent = 'Close App';
-  closeBtn.addEventListener('click', () => {
-    tgApp.close();
-  });
-  
+  closeBtn.addEventListener('click', () => tgApp.close());
   document.getElementById('gameEndText').appendChild(closeBtn);
   
-  // Show game end screen
   showScreen('gameEnd');
+  
+  // Post leaderboard to group chat if from there
+  if (game.originChatId) {
+    postLeaderboard(game.gameId);
+  }
 });
 
 socket.on('playerLeft', ({ playerId, state }) => {

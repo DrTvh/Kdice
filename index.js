@@ -270,7 +270,7 @@ bot.on('callback_query', (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   
   // Handle game creation with stake selection
-  if (data.startsWith('create_game_')) {
+  else if (data.startsWith('create_game_')) {
     const parts = data.split('_');
     const stakeValue = parseInt(parts[2]);
     const creatorId = parts[3];
@@ -281,7 +281,7 @@ bot.on('callback_query', (callbackQuery) => {
     
     // Create a new game with the selected stake
     const game = new DiceGame(gameId);
-    game.originChatId = chatId;
+    game.originChatId = chatId; // Track the group chat
     game.baseStakeValue = stakeValue;
     game.addPlayer(`tg_${creatorId}`, creatorName);
     
@@ -292,15 +292,15 @@ bot.on('callback_query', (callbackQuery) => {
     // Answer the callback query
     bot.answerCallbackQuery(callbackQuery.id, { text: `Game created with $${stakeValue} stake!` });
     
-    // Announce the game creation with join instructions
+    // Announce the game creation without Game ID
     bot.sendMessage(chatId, 
-      `${creatorName} created a new game with $${stakeValue}/point stake!\n\nGame ID: ${gameId}\n\nOther players type /join to join this game.`);
-      
-    // Send a private message to the creator with the direct link
-    bot.sendMessage(creatorId, `You created a game with $${stakeValue}/point stake. Click below to open it:`, {
+      `${creatorName} created a new game with $${stakeValue}/point stake!\n\nOther players type /join to join this game.`);
+    
+    // Send a private message to the creator with the direct link (optional)
+    bot.sendMessage(creatorId, `You created a game with $${stakeValue}/point stake. Wait for others to join!`, {
       reply_markup: {
         inline_keyboard: [[
-          { text: "Open Your Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}` } }
+          { text: "Open Your Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
         ]]
       }
     }).catch(err => logger.error('Failed to send private message to creator', err));
@@ -329,15 +329,31 @@ bot.on('callback_query', (callbackQuery) => {
     if (game.addPlayer(`tg_${joinerId}`, joinerName)) {
       bot.answerCallbackQuery(callbackQuery.id, { text: "Joined the game successfully!" });
       
-      // Announce the player joining
-      bot.sendMessage(chatId, 
-        `${joinerName} joined ${game.players[0].name}'s game! The game can now begin.`);
+      // Announce the player joining with an inline button to start the game
+      if (game.players.length === 2) { // Start game when 2 players join
+        bot.sendMessage(chatId, 
+          `${joinerName} joined ${game.players[0].name}'s game! The game can now begin.`, {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: "Start Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}&stake=${game.baseStakeValue}` } }
+            ]]
+          }
+        });
+        
+        // Notify all players via Socket.IO to start the game
+        io.to(gameId).emit('gameStarted', {
+          state: game.getGameState(),
+          playerId: game.players[0].id // Start with creator's turn
+        });
+      } else {
+        bot.sendMessage(chatId, `${joinerName} joined ${game.players[0].name}'s game! Waiting for more players...`);
+      }
       
       // Send a private message to the joiner with the direct link
       bot.sendMessage(joinerId, `You joined ${game.players[0].name}'s game. Click below to open it:`, {
         reply_markup: {
           inline_keyboard: [[
-            { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}` } }
+            { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
           ]]
         }
       }).catch(err => logger.error('Failed to send private message to joiner', err));
