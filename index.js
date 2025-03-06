@@ -948,40 +948,78 @@ io.on('connection', (socket) => {
   });
   
   // Handle ending the game
-  socket.on('endGame', ({ gameId }) => {
-    logger.info('Received endGame request', { gameId });
-    if (!activeGames[gameId]) {
-      logger.info('Game not found', { gameId });
-      socket.emit('error', { message: 'Game not found' });
-      return;
-    }
-  
+  // Add this at the top of index.js, outside io.on('connection', ...)
+const endedGames = new Map(); // Store leaderboard data temporarily
+
+// Inside io.on('connection', (socket) => { ... })
+socket.on('endGame', ({ gameId }) => {
+  logger.info('Received endGame request', { gameId });
+
+  let endGameData;
+  if (activeGames[gameId]) {
     const game = activeGames[gameId];
     const result = game.endGame();
-  
+
     if (!result.success) {
       logger.info('Failed to end game', { gameId });
       socket.emit('error', { message: 'Failed to end game' });
       return;
     }
-  
+
     logger.info('Game ended', { gameId });
-  
-    io.to(gameId).emit('gameEnded', {
+    endGameData = {
       state: game.getGameState(),
       leaderboard: result.leaderboard,
       endedBy: socket.id
+    };
+
+    // Store leaderboard data before cleanup
+    endedGames.set(gameId, {
+      data: endGameData,
+      timestamp: Date.now()
     });
-  
+  } else if (endedGames.has(gameId)) {
+    // Game already ended, use cached data
+    logger.info('Game already ended, using cached data', { gameId });
+    endGameData = endedGames.get(gameId).data;
+  } else {
+    // No data available, emit minimal response (shouldn’t happen with cache)
+    logger.info('No game or cached data found', { gameId });
+    endGameData = {
+      state: {},
+      leaderboard: [],
+      endedBy: socket.id
+    };
+  }
+
+  // Emit to room and directly to requester
+  io.to(gameId).emit('gameEnded', endGameData);
+  socket.emit('gameEnded', endGameData);
+
+  // Cleanup active game and schedule cache removal
+  if (activeGames[gameId]) {
     setTimeout(() => {
-      if (game.originChatId) {
-        postLeaderboard(gameId);
+      if (activeGames[gameId]) {
+        if (game.originChatId) {
+          postLeaderboard(gameId);
+        } else {
+          delete activeGames[gameId];
+          delete gameOrigins[gameId];
+        }
+        logger.info('Game cleanup completed', { gameId });
       } else {
-        delete activeGames[gameId];
-        delete gameOrigins[gameId];
+        logger.info('Game already cleaned up', { gameId });
       }
+      // Remove cached data after longer delay (e.g., 10s)
+      setTimeout(() => {
+        if (endedGames.has(gameId)) {
+          endedGames.delete(gameId);
+          logger.info('Cached game data removed', { gameId });
+        }
+      }, 8000); // 8s after cleanup, total 10s from end
     }, 2000);
-  });
+  }
+});
   
   // Handle player leaving a game
   socket.on('leaveGame', ({ gameId, playerId }) => {
