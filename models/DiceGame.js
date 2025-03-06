@@ -248,21 +248,32 @@ class DiceGame {
     
     const bidder = this.players.find(p => p.id === this.currentBid.player);
     const challenger = this.getCurrentPlayer();
-    const prevPlayerIndex = (this.currentPlayerIndex - 1 + this.players.length) % this.players.length;
-    const prevPlayer = this.players[prevPlayerIndex];
+    
+    if (!bidder) {
+      return { success: false, message: "Invalid bidder state" };
+    }
+    
+    // In a two-player game, the opponent is the player who isn't the bidder
+    const opponent = this.players.find(p => p.id !== bidder.id);
+    if (!opponent) {
+      return { success: false, message: "Invalid opponent state" };
+    }
     
     let winner, loser;
     
     if (actualCount < this.currentBid.count) {
-      winner = challenger; // Challenger wins if bid fails
+      winner = opponent; // Opponent wins if bid fails
       loser = bidder; // Bidder loses
     } else {
       winner = bidder; // Bidder wins if bid succeeds
-      loser = challenger; // Challenger loses
+      loser = opponent; // Opponent loses
     }
     
     this.lastRoundLoser = loser.id;
     this.updatePlayerScore(winner.id, loser.id, this.stakes);
+    
+    // Debug log to trace the outcome
+    console.log(`Challenge: Bidder=${bidder.id} (${bidder.name}), Challenger=${challenger.id} (${challenger.name}), Opponent=${opponent.id} (${opponent.name}), Actual=${actualCount}, Bid=${this.currentBid.count}, Winner=${winner.id} (${winner.name}), Loser=${loser.id} (${loser.name}), Stakes=${this.stakes}`);
     
     return {
       success: true,
