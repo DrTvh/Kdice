@@ -116,7 +116,7 @@ function getScoreText(chatId) {
   
   // Get all players who have played in this chat
   const chatPlayers = Object.values(playerStats)
-    .filter(player => player.chatIds && player.chatIds.includes(chatId))
+    .filter(player => player.chatIds && player.chatIds.includes(chatId.toString())) // Ensure chatId is string
     .sort((a, b) => b.points - a.points);
   
   if (chatPlayers.length === 0) {
@@ -128,7 +128,7 @@ function getScoreText(chatId) {
     const pointsDisplay = player.points >= 0 ? `+${player.points}` : player.points;
     const dollarsDisplay = player.dollars >= 0 ? `+$${player.dollars}` : `-$${Math.abs(player.dollars)}`;
     
-    scoreText += `${index + 1}. *${player.name}*: ${pointsDisplay} pts (${player.wins}W/${player.losses}L) ${dollarsDisplay}\n`;
+    scoreText += `${index + 1}. *${player.name}*: ${pointsDisplay} pts ${dollarsDisplay}\n`;
     scoreText += `   Rounds: ${player.rounds} | Win Rate: ${winRate} pts/round\n\n`;
   });
   
@@ -210,57 +210,78 @@ bot.on('message', (msg) => {
   }
   
   // Handle join game command for groups
-  else if (msg.text && (msg.text === '/join' || msg.text.startsWith('/join@'))) {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    const userName = msg.from.first_name || 'Player';
+  else if (msg.text) {
+    // Normalize the command by trimming and converting to lowercase
+    const command = msg.text.trim().toLowerCase();
+    const botUsername = (await bot.getMe()).username.toLowerCase();
+    const joinCommandPattern = new RegExp(`^/join(@${botUsername})?(\\s|$)`);
     
-    // Find active games from this group chat
-    const activeGroupGames = Object.entries(activeGames)
-      .filter(([_, game]) => game.originChatId === chatId && !game.gameStarted && !game.gameEnded)
-      .map(([id, game]) => ({
-        id,
-        creator: game.players[0]?.name || 'Unknown',
-        stakeValue: game.baseStakeValue
-      }));
-    
-    if (activeGroupGames.length === 0) {
-      bot.sendMessage(chatId, "No active games in this chat. Create one with /creategame first!");
-      return;
-    }
-    
-    // Check if the user is already in a game
-    const alreadyInGame = activeGroupGames.some(game => 
-      activeGames[game.id].players.some(p => p.id === `tg_${userId}`)
-    );
-    
-    if (alreadyInGame) {
-      // If already in a game, just provide the link to open it
-      const gameId = activeGroupGames.find(game => 
-        activeGames[game.id].players.some(p => p.id === `tg_${userId}`)
-      ).id;
+    if (joinCommandPattern.test(command)) {
+      const chatId = msg.chat.id;
+      const userId = msg.from.id;
+      const userName = msg.from.first_name || msg.from.username || 'Player';
       
-      bot.sendMessage(chatId, `${userName}, you're already in a game. Click below to open it:`, {
-        reply_markup: {
-          inline_keyboard: [[
-            { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}` } }
-          ]]
-        }
-      });
-      return;
-    }
-    
-    // Create keyboard with available games
-    const keyboard = activeGroupGames.map(game => [{
-      text: `Join ${game.creator}'s game ($${game.stakeValue}/point)`,
-      callback_data: `join_game_${game.id}_${userId}_${encodeURIComponent(userName)}`
-    }]);
-    
-    bot.sendMessage(chatId, "Choose a game to join:", {
-      reply_markup: {
-        inline_keyboard: keyboard
+      logger.info('Processing /join command', { chatId, userId, userName, rawCommand: msg.text });
+      
+      // Find active games from this group chat
+      const activeGroupGames = Object.entries(activeGames)
+        .filter(([_, game]) => game.originChatId === chatId && !game.gameStarted && !game.gameEnded)
+        .map(([id, game]) => ({
+          id,
+          creator: game.players[0]?.name || 'Unknown',
+          stakeValue: game.baseStakeValue
+        }));
+      
+      if (activeGroupGames.length === 0) {
+        bot.sendMessage(chatId, "No active games in this chat. Create one with /creategame first!").then(() => {
+          logger.info('Sent no active games message', { chatId, userId });
+        }).catch(err => {
+          logger.error('Failed to send no active games message', { chatId, userId, error: err.message });
+        });
+        return;
       }
-    });
+      
+      // Check if the user is already in a game
+      const alreadyInGame = activeGroupGames.some(game => 
+        activeGames[game.id].players.some(p => p.id === `tg_${userId}`)
+      );
+      
+      if (alreadyInGame) {
+        // If already in a game, just provide the link to open it
+        const gameId = activeGroupGames.find(game => 
+          activeGames[game.id].players.some(p => p.id === `tg_${userId}`)
+        ).id;
+        
+        bot.sendMessage(chatId, `${userName}, you're already in a game. Click below to open it:`, {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: "Open Game", web_app: { url: `https://kdice.onrender.com/?join=${gameId}&chatId=${chatId}` } }
+            ]]
+          }
+        }).then(() => {
+          logger.info('Sent already in game message', { chatId, userId, gameId });
+        }).catch(err => {
+          logger.error('Failed to send already in game message', { chatId, userId, gameId, error: err.message });
+        });
+        return;
+      }
+      
+      // Create keyboard with available games
+      const keyboard = activeGroupGames.map(game => [{
+        text: `Join ${game.creator}'s game ($${game.stakeValue}/point)`,
+        callback_data: `join_game_${game.id}_${userId}_${encodeURIComponent(userName)}`
+      }]);
+      
+      bot.sendMessage(chatId, "Choose a game to join:", {
+        reply_markup: {
+          inline_keyboard: keyboard
+        }
+      }).then(() => {
+        logger.info('Sent join options to chat', { chatId, userName, gameOptions: activeGroupGames.length });
+      }).catch(err => {
+        logger.error('Failed to send join options', { chatId, userName, error: err.message });
+      });
+    }
   }
 });
 
@@ -372,7 +393,7 @@ function updatePlayerStats(winner, loser, stakes, gameId) {
   if (!playerStats[winner.id]) {
     playerStats[winner.id] = { 
       name: winner.name, 
-      wins: 0, 
+      wins: 0,
       losses: 0,
       points: 0,
       rounds: 0,
@@ -383,7 +404,7 @@ function updatePlayerStats(winner, loser, stakes, gameId) {
   if (!playerStats[loser.id]) {
     playerStats[loser.id] = { 
       name: loser.name, 
-      wins: 0, 
+      wins: 0,
       losses: 0,
       points: 0,
       rounds: 0,
@@ -422,7 +443,9 @@ function updatePlayerStats(winner, loser, stakes, gameId) {
     loser: loser.name,
     stakes: stakes,
     winnerNewPoints: playerStats[winner.id].points,
-    loserNewPoints: playerStats[loser.id].points
+    loserNewPoints: playerStats[loser.id].points,
+    winnerChatIds: playerStats[winner.id].chatIds,
+    loserChatIds: playerStats[loser.id].chatIds
   });
   
   // If game came from a group chat, announce the result
@@ -451,16 +474,8 @@ function postLeaderboard(gameId) {
         name: game.players.find(p => p.id === id)?.name || 'Unknown',
         points: game.playerScores[id] || 0,
         rounds: game.roundHistory.length || 0,
-        dollars: (game.playerScores[id] || 0) * game.baseStakeValue,
-        wins: 0,
-        losses: 0
+        dollars: (game.playerScores[id] || 0) * game.baseStakeValue
       };
-      
-      // Count wins and losses from game history if they're not tracked
-      if (!stats.wins || !stats.losses) {
-        stats.wins = game.roundHistory.filter(r => r.winner === id).length;
-        stats.losses = game.roundHistory.filter(r => r.loser === id).length;
-      }
       
       return stats;
     })
@@ -476,7 +491,7 @@ function postLeaderboard(gameId) {
       const pointsText = player.points >= 0 ? `+${player.points}` : `${player.points}`;
       
       leaderboardText += `${index + 1}. *${player.name}*: ${pointsText} points (${pointsPerRound} pts/round) ${dollarText}\n`;
-      leaderboardText += `   Rounds Played: ${player.rounds} | Win/Loss: ${player.wins}W/${player.losses}L\n\n`;
+      leaderboardText += `   Rounds Played: ${player.rounds}\n\n`;
     });
   } else {
     leaderboardText += "No player statistics available yet.";
