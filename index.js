@@ -411,6 +411,15 @@ function updatePlayerStats(winner, loser, stakes, gameId) {
     winnerNewPoints: playerStats[winner.id].points,
     loserNewPoints: playerStats[loser.id].points
   });
+  
+  // If game came from a group chat, announce the result
+  const game = activeGames[gameId];
+  
+  if (game && game.originChatId) {
+    bot.sendMessage(game.originChatId, 
+      `Game update: ${winner.name} won ${stakes} points ($${stakes * game.baseStakeValue}) from ${loser.name}!`
+    );
+  }
 }
 
 // Function to post leaderboard to original group chat
@@ -508,42 +517,6 @@ io.on('connection', (socket) => {
       gameId,
       state: game.getGameState(playerId)
     });
-    // Auto-close game after 30 minutes if not started or ended
-setTimeout(() => {
-  if (activeGames[gameId]) { // Check if game still exists
-    const game = activeGames[gameId];
-    if (!game.gameStarted) {
-      // Game never started, just delete it
-      logger.info('Auto-closing unstarted game', { gameId });
-      delete activeGames[gameId];
-      delete gameOrigins[gameId];
-      io.to(gameId).emit('gameEnded', {
-        state: game.getGameState(),
-        leaderboard: [],
-        message: 'Game closed due to inactivity (never started)'
-      });
-    } else if (!game.gameEnded) {
-      // Game started but not ended, finalize it
-      logger.info('Auto-closing abandoned game', { gameId });
-      game.gameEnder = 'system';
-      const endResult = game.endGame();
-      if (endResult.success) {
-        io.to(gameId).emit('gameEnded', {
-          state: game.getGameState(),
-          leaderboard: endResult.leaderboard,
-          endedBy: 'system',
-          message: 'Game closed due to inactivity'
-        });
-        if (game.originChatId) {
-          postLeaderboard(gameId); // Post final scores
-        } else {
-          delete activeGames[gameId];
-          delete gameOrigins[gameId];
-        }
-      }
-    }
-  }
-}, 180 * 60 * 1000); // 30 minutes
   });
   
   // Handle joining an existing game
@@ -920,43 +893,30 @@ setTimeout(() => {
     if (!activeGames[gameId]) return;
     const game = activeGames[gameId];
     
-    let forfeitPenalty = 0;
-    let forfeitWinner = null;
-    let forfeitLoserName = game.players.find(p => p.id === playerId)?.name || 'Unknown';
-    
     if (game.gameStarted && game.currentBid) {
-      const opponentIndex = (game.currentPlayerIndex - 1 + game.players.length) % game.players.length;
-      const opponent = game.players[opponentIndex] || game.players.find(p => p.id !== playerId);
-      if (opponent) {
-        forfeitPenalty = game.stakes > 1 ? Math.floor(game.stakes / 2) : 1;
-        game.updatePlayerScore(opponent.id, playerId, forfeitPenalty);
-        game.lastRoundLoser = playerId;
-        logger.info('Player forfeited round by leaving', { gameId, playerId, penalty: forfeitPenalty, winnerId: opponent.id });
-        updatePlayerStats({ id: opponent.id, name: opponent.name }, { id: playerId, name: forfeitLoserName }, forfeitPenalty, gameId);
-        forfeitWinner = opponent;
+      // Forfeit the round as if folding
+      const result = game.fold(playerId);
+      if (result.success) {
+        logger.info('Player forfeited round by leaving', { gameId, playerId, penalty: result.penalty });
+        updatePlayerStats(result.winner, result.loser, result.penalty, gameId);
+        io.to(gameId).emit('foldResult', {
+          loser: result.loser,
+          winner: result.winner,
+          penalty: result.penalty,
+          state: game.getGameState(),
+          baseStakeValue: game.baseStakeValue
+        });
       }
     }
     
-    // Ensure all players are in the room
-    game.players.forEach(player => {
-      io.sockets.sockets.forEach(s => {
-        if (s.handshake.query.playerId === player.id) s.join(gameId);
-      });
-    });
-    
+    // End the game
     const endResult = game.endGame();
     if (endResult.success) {
       logger.info('Game ended due to player leaving', { gameId, playerId });
       io.to(gameId).emit('gameEnded', {
         state: game.getGameState(),
         leaderboard: endResult.leaderboard,
-        endedBy: playerId,
-        forfeit: game.gameStarted && game.currentBid ? {
-          loserId: playerId,
-          loserName: forfeitLoserName,
-          winner: forfeitWinner,
-          penalty: forfeitPenalty
-        } : null
+        endedBy: playerId
       });
       if (game.originChatId) postLeaderboard(gameId);
     }
