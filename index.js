@@ -508,6 +508,42 @@ io.on('connection', (socket) => {
       gameId,
       state: game.getGameState(playerId)
     });
+    // Auto-close game after 30 minutes if not started or ended
+setTimeout(() => {
+  if (activeGames[gameId]) { // Check if game still exists
+    const game = activeGames[gameId];
+    if (!game.gameStarted) {
+      // Game never started, just delete it
+      logger.info('Auto-closing unstarted game', { gameId });
+      delete activeGames[gameId];
+      delete gameOrigins[gameId];
+      io.to(gameId).emit('gameEnded', {
+        state: game.getGameState(),
+        leaderboard: [],
+        message: 'Game closed due to inactivity (never started)'
+      });
+    } else if (!game.gameEnded) {
+      // Game started but not ended, finalize it
+      logger.info('Auto-closing abandoned game', { gameId });
+      game.gameEnder = 'system';
+      const endResult = game.endGame();
+      if (endResult.success) {
+        io.to(gameId).emit('gameEnded', {
+          state: game.getGameState(),
+          leaderboard: endResult.leaderboard,
+          endedBy: 'system',
+          message: 'Game closed due to inactivity'
+        });
+        if (game.originChatId) {
+          postLeaderboard(gameId); // Post final scores
+        } else {
+          delete activeGames[gameId];
+          delete gameOrigins[gameId];
+        }
+      }
+    }
+  }
+}, 180 * 60 * 1000); // 30 minutes
   });
   
   // Handle joining an existing game

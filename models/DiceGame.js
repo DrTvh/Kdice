@@ -153,55 +153,35 @@ class DiceGame {
     
     let isValidBid = false;
     
-    // After a bid with 1s (always TSI), require higher count
-    if (this.currentBid.value === 1) {
-      if (count <= this.currentBid.count) {
+    // Define value hierarchy: 1s are highest (jokers)
+    const valueHierarchy = (val) => val === 1 ? 7 : val; // Map 1 to 7 (higher than 6)
+    
+    // After any bid
+    if (this.currentBid.isTsi && !this.currentBid.isFly) {
+      if (isTsi) {
+        isValidBid = (count > this.currentBid.count) || 
+                     (count === this.currentBid.count && valueHierarchy(value) > valueHierarchy(this.currentBid.value));
+      } else if (isFly) {
+        const minCount = this.currentBid.count * 2;
+        isValidBid = count >= minCount;
+      } else {
         return { 
           success: false, 
-          message: `After a bid with 1s, you must increase the count to at least ${this.currentBid.count + 1}` 
+          message: "After a Tsi (-) bid, you must choose Tsi (-) or Fly (+)!" 
         };
       }
-      isValidBid = true;
-    }
-    // TSI bid
-    else if (isTsi) {
-      if (this.currentBid.isTsi) {
-        isValidBid = (count > this.currentBid.count) || 
-                     (count === this.currentBid.count && value > this.currentBid.value);
-      } else {
-        isValidBid = count >= this.currentBid.count; // Allows any value with same or higher count
-      }
-    }
-    // Fly bid
-    else if (isFly) {
-      const minCount = this.currentBid ? this.currentBid.count * 2 : 1;
-      
+    } else if (isFly) {
       if (!this.currentBid || !this.currentBid.isTsi) {
         return { 
           success: false, 
           message: "Fly (+) is only available after a Tsi (-) bid!" 
         };
       }
-      
+      const minCount = this.currentBid.count * 2;
       isValidBid = count >= minCount;
-      if (isValidBid) {
-        this.currentBid = { count, value, isTsi: false, isFly: true, player: playerId };
-        const nextPlayer = this.getNextPlayer();
-        return { success: true };
-      }
-    }
-    // Regular bid after TSI
-    else if (this.currentBid.isTsi && !this.currentBid.isFly) {
-      return { 
-        success: false, 
-        message: "After a Tsi (-) bid, you must choose Tsi (-) or Fly (+)!" 
-      };
-    }
-    // Regular bid
-    else {
-      isValidBid = 
-        (count > this.currentBid.count) || 
-        (count === this.currentBid.count && value > this.currentBid.value);
+    } else {
+      isValidBid = (count > this.currentBid.count) || 
+                   (count === this.currentBid.count && valueHierarchy(value) > valueHierarchy(this.currentBid.value));
     }
     
     if (!isValidBid) {

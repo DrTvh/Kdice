@@ -344,32 +344,20 @@ function updateBidValidity() {
   valueButtons.forEach(button => button.style.display = 'flex');
   
   if (game.currentBid) {
-    if (game.currentBid.value === 1) {
-      const minCount = game.currentBid.count + 1;
-      countButtons.forEach(button => {
-        if (parseInt(button.dataset.count) < minCount) button.style.display = 'none';
-      });
-      if (game.bidCount < minCount) selectCount(minCount);
-      return;
-    }
+    const valueHierarchy = (val) => val === 1 ? 7 : val; // 1s are highest
     
     if (game.currentBid.isTsi && !game.currentBid.isFly) {
       if (game.isTsi) {
-        if (game.currentBid.isTsi) {
-          countButtons.forEach(button => {
-            const count = parseInt(button.dataset.count);
-            if (!(count > game.currentBid.count || count === game.currentBid.count)) button.style.display = 'none';
-          });
-          valueButtons.forEach(button => {
-            const value = parseInt(button.dataset.value);
-            if (game.bidCount === game.currentBid.count && value <= game.currentBid.value) button.style.display = 'none';
-          });
-        } else {
-          countButtons.forEach(button => {
-            if (parseInt(button.dataset.count) < game.currentBid.count) button.style.display = 'none';
-          });
-          valueButtons.forEach(button => button.style.display = 'flex');
-        }
+        countButtons.forEach(button => {
+          const count = parseInt(button.dataset.count);
+          if (count < game.currentBid.count) button.style.display = 'none';
+        });
+        valueButtons.forEach(button => {
+          const value = parseInt(button.dataset.value);
+          if (game.bidCount === game.currentBid.count && valueHierarchy(value) <= valueHierarchy(game.currentBid.value)) {
+            button.style.display = 'none';
+          }
+        });
       } else if (game.isFly) {
         const minCount = game.currentBid.count * 2;
         countButtons.forEach(button => {
@@ -384,14 +372,71 @@ function updateBidValidity() {
     } else {
       countButtons.forEach(button => {
         const count = parseInt(button.dataset.count);
-        if (!(count > game.currentBid.count || count === game.currentBid.count)) button.style.display = 'none';
+        if (count < game.currentBid.count) button.style.display = 'none';
       });
-      if (!game.isTsi) {
+      valueButtons.forEach(button => {
+        const value = parseInt(button.dataset.value);
+        if (game.bidCount === game.currentBid.count && valueHierarchy(value) <= valueHierarchy(game.currentBid.value)) {
+          button.style.display = 'none';
+        }
+      });
+    }
+  } else {
+    countButtons.forEach(button => {
+      const count = parseInt(button.dataset.count);
+      if (count < 3 && game.bidValue !== 1) button.style.display = 'none';
+      else if (count < 2) button.style.display = 'none';
+    });
+    
+    if (game.bidCount < 3 && game.bidValue !== 1) selectCount(3);
+    else if (game.bidCount < 2) selectCount(2);
+    
+    document.getElementById('tsiBtn').disabled = false;
+  }
+}function updateBidValidity() {
+  const countButtons = document.querySelectorAll('#countButtons .number-button');
+  const valueButtons = document.querySelectorAll('#valueButtons .number-button');
+  
+  countButtons.forEach(button => button.style.display = 'flex');
+  valueButtons.forEach(button => button.style.display = 'flex');
+  
+  if (game.currentBid) {
+    const valueHierarchy = (val) => val === 1 ? 7 : val; // 1s are highest
+    
+    if (game.currentBid.isTsi && !game.currentBid.isFly) {
+      if (game.isTsi) {
+        countButtons.forEach(button => {
+          const count = parseInt(button.dataset.count);
+          if (count < game.currentBid.count) button.style.display = 'none';
+        });
         valueButtons.forEach(button => {
           const value = parseInt(button.dataset.value);
-          if (game.bidCount === game.currentBid.count && value <= game.currentBid.value) button.style.display = 'none';
+          if (game.bidCount === game.currentBid.count && valueHierarchy(value) <= valueHierarchy(game.currentBid.value)) {
+            button.style.display = 'none';
+          }
         });
+      } else if (game.isFly) {
+        const minCount = game.currentBid.count * 2;
+        countButtons.forEach(button => {
+          if (parseInt(button.dataset.count) < minCount) button.style.display = 'none';
+        });
+        if (game.bidCount < minCount) selectCount(minCount);
+        valueButtons.forEach(button => button.style.display = 'flex');
+      } else {
+        countButtons.forEach(button => button.style.display = 'none');
+        valueButtons.forEach(button => button.style.display = 'none');
       }
+    } else {
+      countButtons.forEach(button => {
+        const count = parseInt(button.dataset.count);
+        if (count < game.currentBid.count) button.style.display = 'none';
+      });
+      valueButtons.forEach(button => {
+        const value = parseInt(button.dataset.value);
+        if (game.bidCount === game.currentBid.count && valueHierarchy(value) <= valueHierarchy(game.currentBid.value)) {
+          button.style.display = 'none';
+        }
+      });
     }
   } else {
     countButtons.forEach(button => {
