@@ -4,7 +4,14 @@ tgApp.expand();
 tgApp.ready();
 
 // Connect to Socket.io server
-const socket = io();
+const socket = io('https://kdice.onrender.com', {
+  reconnection: true,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000
+});
+
+socket.on('connect', () => console.log('Connected to server'));
+socket.on('connect_error', (err) => console.error('Connection failed:', err.message));
 
 // Extract user data, prioritizing Telegram WebApp data
 let userData = {
@@ -471,6 +478,7 @@ document.querySelectorAll('.stake-button').forEach(button => {
       btn.classList.remove('selected');
     });
     button.classList.add('selected');
+    console.log('Stake selected:', stake);
   });
 });
 
@@ -539,12 +547,22 @@ document.getElementById('openBtn').addEventListener('click', () => {
   updateGameControls();
 });
 
-document.getElementById('createGameBtn').addEventListener('click', () => {
+document.getElementById('createGameBtn').addEventListener('click', (e) => {
+  const button = e.target;
+  button.disabled = true; // Disable to show action in progress
+  console.log('Creating game with stake:', game.selectedStake);
   socket.emit('createGame', {
     playerName: game.playerName,
     playerId: game.playerId,
     stakeValue: game.selectedStake
   });
+  setTimeout(() => {
+    if (button.disabled) {
+      button.disabled = false;
+      console.log('Create game timed out - no server response');
+      alert('Failed to create game: Server not responding. Please try again.');
+    }
+  }, 5000); // 5-second timeout
 });
 
 document.getElementById('joinGameBtn').addEventListener('click', () => {
@@ -755,11 +773,13 @@ document.getElementById('challengeBtn').addEventListener('click', () => {
 
 // Socket.io event handlers
 socket.on('gameCreated', ({ gameId, state }) => {
+  console.log('Game created:', gameId);
   game.gameId = gameId;
   updateGameState(state);
   document.getElementById('gameIdDisplay').textContent = gameId;
   updateLobbyPlayerList();
   showScreen('lobby');
+  document.getElementById('createGameBtn').disabled = false; // Re-enable button
 });
 
 socket.on('gameJoined', ({ gameId, state, alreadyJoined }) => {
