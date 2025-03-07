@@ -920,30 +920,36 @@ setTimeout(() => {
     if (!activeGames[gameId]) return;
     const game = activeGames[gameId];
     
+    let forfeitPenalty = 0;
+    let forfeitWinner = null;
+    let forfeitLoserName = game.players.find(p => p.id === playerId)?.name || 'Unknown';
+    
     if (game.gameStarted && game.currentBid) {
-      // Forfeit the round as if folding
-      const result = game.fold(playerId);
-      if (result.success) {
-        logger.info('Player forfeited round by leaving', { gameId, playerId, penalty: result.penalty });
-        updatePlayerStats(result.winner, result.loser, result.penalty, gameId);
-        io.to(gameId).emit('foldResult', {
-          loser: result.loser,
-          winner: result.winner,
-          penalty: result.penalty,
-          state: game.getGameState(),
-          baseStakeValue: game.baseStakeValue
-        });
+      const opponentIndex = (game.currentPlayerIndex - 1 + game.players.length) % game.players.length;
+      const opponent = game.players[opponentIndex] || game.players.find(p => p.id !== playerId);
+      if (opponent) {
+        forfeitPenalty = game.stakes > 1 ? Math.floor(game.stakes / 2) : 1;
+        game.updatePlayerScore(opponent.id, playerId, forfeitPenalty);
+        game.lastRoundLoser = playerId;
+        logger.info('Player forfeited round by leaving', { gameId, playerId, penalty: forfeitPenalty, winnerId: opponent.id });
+        updatePlayerStats({ id: opponent.id, name: opponent.name }, { id: playerId, name: forfeitLoserName }, forfeitPenalty, gameId);
+        forfeitWinner = opponent;
       }
     }
     
-    // End the game
     const endResult = game.endGame();
     if (endResult.success) {
       logger.info('Game ended due to player leaving', { gameId, playerId });
       io.to(gameId).emit('gameEnded', {
         state: game.getGameState(),
         leaderboard: endResult.leaderboard,
-        endedBy: playerId
+        endedBy: playerId,
+        forfeit: game.gameStarted && game.currentBid ? {
+          loserId: playerId,
+          loserName: forfeitLoserName,
+          winner: forfeitWinner,
+          penalty: forfeitPenalty
+        } : null
       });
       if (game.originChatId) postLeaderboard(gameId);
     }

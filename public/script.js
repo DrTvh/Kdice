@@ -644,7 +644,7 @@ document.getElementById('leaveGameBtn').addEventListener('click', () => {
   const stakes = game.stakes || 1;
   const penalty = stakes > 1 ? Math.floor(stakes / 2) : 1;
   document.getElementById('gameEndText').innerHTML = `
-    <p>You have left the game and forfeited the round.</p>
+    <p>You forfeited the game.</p>
     <p>Penalty: -${penalty} point${penalty > 1 ? 's' : ''} (Waiting for final results...)</p>
   `;
   document.getElementById('leaderboardDisplay').innerHTML = '<h3>Game Leaderboard</h3><p>Loading final scores...</p>';
@@ -655,8 +655,8 @@ document.getElementById('leaveGameBtn').addEventListener('click', () => {
   game.isMyTurn = false;
 
   // Handle server response or timeout
-  socket.once('gameEnded', ({ state, leaderboard, endedBy }) => {
-    console.log('Received gameEnded after leaving', { gameId: game.gameId, endedBy });
+  socket.once('gameEnded', ({ state, leaderboard, endedBy, forfeit }) => {
+    console.log('Received gameEnded after leaving', { gameId: game.gameId, endedBy, forfeit });
     game.gameEnder = endedBy || game.gameEnder;
     let enderPlayer = game.players.find(p => p.id === game.gameEnder || p.id === endedBy) || { name: 'Someone' };
     const enderName = enderPlayer.name;
@@ -678,10 +678,24 @@ document.getElementById('leaveGameBtn').addEventListener('click', () => {
     });
     leaderboardElem.appendChild(leaderTable);
 
-    const gameEndMessage = game.gameEnder === game.playerId ? `You ended the game.` : `${enderName} ended the game.`;
+    let message = '';
+    if (forfeit) {
+      if (game.playerId === forfeit.loserId) {
+        message = `
+          <p>You forfeited the game.</p>
+          <p>Penalty: -${forfeit.penalty} point${forfeit.penalty > 1 ? 's' : ''}.</p>
+        `;
+      } else {
+        message = `
+          <p>${forfeit.loserName} forfeited the game.</p>
+          <p>You won ${forfeit.penalty} point${forfeit.penalty > 1 ? 's' : ''}.</p>
+        `;
+      }
+    } else {
+      message = game.gameEnder === game.playerId ? '<p>You ended the game.</p>' : `<p>${enderName} ended the game.</p>`;
+    }
     document.getElementById('gameEndText').innerHTML = `
-      <p>${gameEndMessage}</p>
-      <p>You forfeited the round, losing ${penalty} point${penalty > 1 ? 's' : ''}.</p>
+      ${message}
       <p>A full leaderboard has been posted to the group chat.</p>
     `;
     const closeBtn = document.createElement('button');
@@ -696,7 +710,7 @@ document.getElementById('leaveGameBtn').addEventListener('click', () => {
   setTimeout(() => {
     if (document.getElementById('gameEndText').innerHTML.includes('Waiting')) {
       document.getElementById('gameEndText').innerHTML = `
-        <p>You have left the game and forfeited the round.</p>
+        <p>You forfeited the game.</p>
         <p>Penalty: -${penalty} point${penalty > 1 ? 's' : ''} (Final results unavailable due to server delay).</p>
       `;
       const closeBtn = document.createElement('button');
