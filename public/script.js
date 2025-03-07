@@ -656,60 +656,32 @@ document.getElementById('leaveGameBtn').addEventListener('click', () => {
   // Handle server response or timeout
   socket.on('gameEnded', ({ state, leaderboard, endedBy, forfeit }) => {
     console.log('Received gameEnded event', { gameId: game.gameId, endedBy, forfeit });
-    game.gameEnder = endedBy || game.gameEnder;
-    let enderPlayer = game.players.find(p => p.id === game.gameEnder || p.id === endedBy) || { name: 'Someone' };
-    const enderName = enderPlayer.name;
-  
-    updateGameState(state, false); // Ensure latest state
+    updateGameState(state, false);
+    game.gameId = null;
+    game.isMyTurn = false;
   
     const leaderboardElem = document.getElementById('leaderboardDisplay');
     leaderboardElem.innerHTML = '<h3>Game Leaderboard</h3>';
-    const leaderTable = document.createElement('table');
-    leaderTable.className = 'leaderboard-table';
-    const header = document.createElement('tr');
-    header.innerHTML = `<th>Player</th><th>Points</th><th>Money</th>`;
-    leaderTable.appendChild(header);
-  
     leaderboard.forEach(player => {
       const dollars = player.points * (state.baseStakeValue || 100);
       const dollarsDisplay = dollars >= 0 ? `+${dollars}` : `-${Math.abs(dollars)}`;
-      const row = document.createElement('tr');
-      row.innerHTML = `<td>${player.name}${player.id === game.playerId ? ' (You)' : ''}</td><td>${player.points > 0 ? '+' : ''}${player.points}</td><td>${dollarsDisplay}</td>`;
-      leaderTable.appendChild(row);
+      const row = document.createElement('div');
+      row.textContent = `${player.name}${player.id === game.playerId ? ' (You)' : ''}: ${player.points > 0 ? '+' : ''}${player.points}p (${dollarsDisplay})`;
+      leaderboardElem.appendChild(row);
     });
-    leaderboardElem.appendChild(leaderTable);
   
     let message = '';
     if (forfeit) {
-      if (game.playerId === forfeit.loserId) {
-        message = `
-          <p>You forfeited the game.</p>
-          <p>Penalty: -${forfeit.penalty} point${forfeit.penalty > 1 ? 's' : ''}.</p>
-        `;
-      } else {
-        message = `
-          <p>${forfeit.loserName} forfeited the game.</p>
-          <p>You won ${forfeit.penalty} point${forfeit.penalty > 1 ? 's' : ''}.</p>
-        `;
-      }
+      message = game.playerId === forfeit.loserId
+        ? `You forfeited. Penalty: -${forfeit.penalty}p`
+        : `${forfeit.loserName} forfeited. You won ${forfeit.penalty}p`;
     } else {
-      message = game.gameEnder === game.playerId ? '<p>You ended the game.</p>' : `<p>${enderName} ended the game.</p>`;
+      message = endedBy === game.playerId ? 'You ended the game' : `${game.players.find(p => p.id === endedBy)?.name || 'Someone'} ended the game`;
     }
-    document.getElementById('gameEndText').innerHTML = `
-      ${message}
-      <p>A full leaderboard has been posted to the group chat.</p>
-    `;
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'button';
-    closeBtn.textContent = 'Close App';
-    closeBtn.addEventListener('click', () => tgApp.close());
-    document.getElementById('gameEndText').appendChild(closeBtn);
+    document.getElementById('gameEndText').innerHTML = `${message}<br><button class="button" onclick="tgApp.close()">Close App</button>`;
   
-    // Force screen transition
     showScreen('gameEnd');
-    game.gameId = null;
-    game.isMyTurn = false;
-    updateGameControls(); // Hide bid controls
+    updateGameControls();
   });
 
   setTimeout(() => {
