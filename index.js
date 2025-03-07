@@ -937,6 +937,13 @@ setTimeout(() => {
       }
     }
     
+    // Ensure all players are in the room
+    game.players.forEach(player => {
+      io.sockets.sockets.forEach(s => {
+        if (s.handshake.query.playerId === player.id) s.join(gameId);
+      });
+    });
+    
     const endResult = game.endGame();
     if (endResult.success) {
       logger.info('Game ended due to player leaving', { gameId, playerId });

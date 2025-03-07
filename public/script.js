@@ -639,7 +639,6 @@ document.getElementById('leaveGameBtn').addEventListener('click', () => {
     return;
   }
 
-  // Set temporary leaving message with forfeit notice
   game.gameEnder = game.playerId;
   const stakes = game.stakes || 1;
   const penalty = stakes > 1 ? Math.floor(stakes / 2) : 1;
@@ -650,17 +649,19 @@ document.getElementById('leaveGameBtn').addEventListener('click', () => {
   document.getElementById('leaderboardDisplay').innerHTML = '<h3>Game Leaderboard</h3><p>Loading final scores...</p>';
   showScreen('gameEnd');
 
-  // Emit leave request
   socket.emit('leaveGame', { gameId: game.gameId, playerId: game.playerId });
   game.isMyTurn = false;
+});
 
   // Handle server response or timeout
-  socket.once('gameEnded', ({ state, leaderboard, endedBy, forfeit }) => {
-    console.log('Received gameEnded after leaving', { gameId: game.gameId, endedBy, forfeit });
+  socket.on('gameEnded', ({ state, leaderboard, endedBy, forfeit }) => {
+    console.log('Received gameEnded event', { gameId: game.gameId, endedBy, forfeit });
     game.gameEnder = endedBy || game.gameEnder;
     let enderPlayer = game.players.find(p => p.id === game.gameEnder || p.id === endedBy) || { name: 'Someone' };
     const enderName = enderPlayer.name;
-
+  
+    updateGameState(state, false); // Ensure latest state
+  
     const leaderboardElem = document.getElementById('leaderboardDisplay');
     leaderboardElem.innerHTML = '<h3>Game Leaderboard</h3>';
     const leaderTable = document.createElement('table');
@@ -668,7 +669,7 @@ document.getElementById('leaveGameBtn').addEventListener('click', () => {
     const header = document.createElement('tr');
     header.innerHTML = `<th>Player</th><th>Points</th><th>Money</th>`;
     leaderTable.appendChild(header);
-
+  
     leaderboard.forEach(player => {
       const dollars = player.points * (state.baseStakeValue || 100);
       const dollarsDisplay = dollars >= 0 ? `+${dollars}` : `-${Math.abs(dollars)}`;
@@ -677,7 +678,7 @@ document.getElementById('leaveGameBtn').addEventListener('click', () => {
       leaderTable.appendChild(row);
     });
     leaderboardElem.appendChild(leaderTable);
-
+  
     let message = '';
     if (forfeit) {
       if (game.playerId === forfeit.loserId) {
@@ -703,8 +704,12 @@ document.getElementById('leaveGameBtn').addEventListener('click', () => {
     closeBtn.textContent = 'Close App';
     closeBtn.addEventListener('click', () => tgApp.close());
     document.getElementById('gameEndText').appendChild(closeBtn);
-
+  
+    // Force screen transition
+    showScreen('gameEnd');
     game.gameId = null;
+    game.isMyTurn = false;
+    updateGameControls(); // Hide bid controls
   });
 
   setTimeout(() => {
