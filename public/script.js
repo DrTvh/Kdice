@@ -625,7 +625,89 @@ document.getElementById('leaveLobbyBtn').addEventListener('click', () => {
 });
 
 document.getElementById('leaveGameBtn').addEventListener('click', () => {
+  console.log('Leave Game clicked', { gameId: game.gameId, playerId: game.playerId });
+  if (!game.gameId) {
+    console.log('No gameId, showing minimal end screen');
+    document.getElementById('gameEndText').innerHTML = '<p>No active game to leave.</p>';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'button';
+    closeBtn.textContent = 'Close App';
+    closeBtn.addEventListener('click', () => tgApp.close());
+    document.getElementById('gameEndText').appendChild(closeBtn);
+    document.getElementById('leaderboardDisplay').innerHTML = '<h3>Game Leaderboard</h3><p>No game data available.</p>';
+    showScreen('gameEnd');
+    return;
+  }
+
+  // Set temporary leaving message with forfeit notice
+  game.gameEnder = game.playerId;
+  const stakes = game.stakes || 1;
+  const penalty = stakes > 1 ? Math.floor(stakes / 2) : 1;
+  document.getElementById('gameEndText').innerHTML = `
+    <p>You have left the game and forfeited the round.</p>
+    <p>Penalty: -${penalty} point${penalty > 1 ? 's' : ''} (Waiting for final results...)</p>
+  `;
+  document.getElementById('leaderboardDisplay').innerHTML = '<h3>Game Leaderboard</h3><p>Loading final scores...</p>';
+  showScreen('gameEnd');
+
+  // Emit leave request
   socket.emit('leaveGame', { gameId: game.gameId, playerId: game.playerId });
+  game.isMyTurn = false;
+
+  // Handle server response or timeout
+  socket.once('gameEnded', ({ state, leaderboard, endedBy }) => {
+    console.log('Received gameEnded after leaving', { gameId: game.gameId, endedBy });
+    game.gameEnder = endedBy || game.gameEnder;
+    let enderPlayer = game.players.find(p => p.id === game.gameEnder || p.id === endedBy) || { name: 'Someone' };
+    const enderName = enderPlayer.name;
+
+    const leaderboardElem = document.getElementById('leaderboardDisplay');
+    leaderboardElem.innerHTML = '<h3>Game Leaderboard</h3>';
+    const leaderTable = document.createElement('table');
+    leaderTable.className = 'leaderboard-table';
+    const header = document.createElement('tr');
+    header.innerHTML = `<th>Player</th><th>Points</th><th>Money</th>`;
+    leaderTable.appendChild(header);
+
+    leaderboard.forEach(player => {
+      const dollars = player.points * (state.baseStakeValue || 100);
+      const dollarsDisplay = dollars >= 0 ? `+${dollars}` : `-${Math.abs(dollars)}`;
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${player.name}${player.id === game.playerId ? ' (You)' : ''}</td><td>${player.points > 0 ? '+' : ''}${player.points}</td><td>${dollarsDisplay}</td>`;
+      leaderTable.appendChild(row);
+    });
+    leaderboardElem.appendChild(leaderTable);
+
+    const gameEndMessage = game.gameEnder === game.playerId ? `You ended the game.` : `${enderName} ended the game.`;
+    document.getElementById('gameEndText').innerHTML = `
+      <p>${gameEndMessage}</p>
+      <p>You forfeited the round, losing ${penalty} point${penalty > 1 ? 's' : ''}.</p>
+      <p>A full leaderboard has been posted to the group chat.</p>
+    `;
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'button';
+    closeBtn.textContent = 'Close App';
+    closeBtn.addEventListener('click', () => tgApp.close());
+    document.getElementById('gameEndText').appendChild(closeBtn);
+
+    game.gameId = null;
+  });
+
+  setTimeout(() => {
+    if (document.getElementById('gameEndText').innerHTML.includes('Waiting')) {
+      document.getElementById('gameEndText').innerHTML = `
+        <p>You have left the game and forfeited the round.</p>
+        <p>Penalty: -${penalty} point${penalty > 1 ? 's' : ''} (Final results unavailable due to server delay).</p>
+      `;
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'button';
+      closeBtn.textContent = 'Close App';
+      closeBtn.addEventListener('click', () => tgApp.close());
+      document.getElementById('gameEndText').appendChild(closeBtn);
+      document.getElementById('leaderboardDisplay').innerHTML = '<h3>Game Leaderboard</h3><p>Final scores unavailable.</p>';
+      game.gameId = null;
+    }
+  }, 5000);
 });
 
 document.getElementById('bidBtn').addEventListener('click', () => {
