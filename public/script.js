@@ -393,7 +393,8 @@ function updateBidValidity() {
     
     document.getElementById('tsiBtn').disabled = false;
   }
-}function updateBidValidity() {
+}
+function updateBidValidity() {
   const countButtons = document.querySelectorAll('#countButtons .number-button');
   const valueButtons = document.querySelectorAll('#valueButtons .number-button');
   
@@ -415,6 +416,13 @@ function updateBidValidity() {
             button.style.display = 'none';
           }
         });
+        // Ensure at least some valid options are visible for higher TSI bids
+        if ([...countButtons].every(btn => btn.style.display === 'none')) {
+          countButtons.forEach(button => {
+            const count = parseInt(button.dataset.count);
+            if (count >= game.currentBid.count) button.style.display = 'flex';
+          });
+        }
       } else if (game.isFly) {
         const minCount = game.currentBid.count * 2;
         countButtons.forEach(button => {
@@ -434,7 +442,7 @@ function updateBidValidity() {
       valueButtons.forEach(button => {
         const value = parseInt(button.dataset.value);
         if (game.bidCount === game.currentBid.count && valueHierarchy(value) <= valueHierarchy(game.currentBid.value)) {
-          button.style.display = 'none';
+            button.style.display = 'none';
         }
       });
     }
@@ -626,23 +634,20 @@ document.getElementById('bidBtn').addEventListener('click', () => {
   }
   if (game.currentBid) {
     let isValidBid = false;
+    const valueHierarchy = (val) => val === 1 ? 7 : val; // 1s are highest
     if (game.currentBid.isTsi && !game.currentBid.isFly) {
       if (!game.isTsi && !game.isFly) return alert('After a Tsi (-) bid, you must choose Tsi (-) or Fly (+)!');
       if (game.isTsi) {
         isValidBid = (game.bidCount > game.currentBid.count) || 
-                     (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
+                     (game.bidCount === game.currentBid.count && valueHierarchy(game.bidValue) > valueHierarchy(game.currentBid.value));
       } else if (game.isFly) {
         const minCount = game.currentBid.count * 2;
         isValidBid = game.bidCount >= minCount;
         if (!isValidBid) return alert(`Fly bid must double count to at least ${minCount}!`);
       }
     } else {
-      if (game.isTsi) {
-        isValidBid = game.bidCount >= game.currentBid.count;
-      } else {
-        isValidBid = (game.bidCount > game.currentBid.count) || 
-                     (game.bidCount === game.currentBid.count && game.bidValue > game.currentBid.value);
-      }
+      isValidBid = (game.bidCount > game.currentBid.count) || 
+                   (game.bidCount === game.currentBid.count && valueHierarchy(game.bidValue) > valueHierarchy(game.currentBid.value));
     }
     if (!isValidBid) {
       if (game.isTsi) return alert(`Tsi bid must be at least ${game.currentBid.count} dice!`);
