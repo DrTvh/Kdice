@@ -402,7 +402,7 @@ function updateBidValidity() {
   valueButtons.forEach(button => button.style.display = 'flex');
   
   if (game.currentBid) {
-    const valueHierarchy = (val) => val === 1 ? 7 : val; // 1s are highest
+    const valueHierarchy = (val) => val === 1 ? 7 : val;
     
     if (game.currentBid.isTsi && !game.currentBid.isFly) {
       if (game.isTsi) {
@@ -416,13 +416,6 @@ function updateBidValidity() {
             button.style.display = 'none';
           }
         });
-        // Ensure at least some valid options are visible for higher TSI bids
-        if ([...countButtons].every(btn => btn.style.display === 'none')) {
-          countButtons.forEach(button => {
-            const count = parseInt(button.dataset.count);
-            if (count >= game.currentBid.count) button.style.display = 'flex';
-          });
-        }
       } else if (game.isFly) {
         const minCount = game.currentBid.count * 2;
         countButtons.forEach(button => {
@@ -431,8 +424,17 @@ function updateBidValidity() {
         if (game.bidCount < minCount) selectCount(minCount);
         valueButtons.forEach(button => button.style.display = 'flex');
       } else {
-        countButtons.forEach(button => button.style.display = 'none');
-        valueButtons.forEach(button => button.style.display = 'none');
+        // After TSI, allow bidding by keeping options visible
+        countButtons.forEach(button => {
+          const count = parseInt(button.dataset.count);
+          if (count < game.currentBid.count) button.style.display = 'none';
+        });
+        valueButtons.forEach(button => {
+          const value = parseInt(button.dataset.value);
+          if (game.bidCount === game.currentBid.count && valueHierarchy(value) <= valueHierarchy(game.currentBid.value)) {
+            button.style.display = 'none';
+          }
+        });
       }
     } else {
       countButtons.forEach(button => {
@@ -442,7 +444,7 @@ function updateBidValidity() {
       valueButtons.forEach(button => {
         const value = parseInt(button.dataset.value);
         if (game.bidCount === game.currentBid.count && valueHierarchy(value) <= valueHierarchy(game.currentBid.value)) {
-            button.style.display = 'none';
+          button.style.display = 'none';
         }
       });
     }
